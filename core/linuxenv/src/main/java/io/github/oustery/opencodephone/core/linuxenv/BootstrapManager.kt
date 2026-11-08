@@ -103,7 +103,9 @@ class BootstrapManager(
                 // Older APKs installed an incompatible V2 CLI. Upgrade only
                 // that binary; never delete Debian or the user's workspace.
                 val stamp = layout.installedStamp.readText()
-                if ("opencode=$opencodeVersion" !in stamp.split(';')) {
+                if ("opencode=$opencodeVersion" !in stamp.split(';') ||
+                    (deviceAbi().opencodeTarget != null && !layout.opencodeBin().isFile)
+                ) {
                     layout.ensureDirs()
                     installOpenCode(deviceAbi())
                     layout.installedStamp.writeText(

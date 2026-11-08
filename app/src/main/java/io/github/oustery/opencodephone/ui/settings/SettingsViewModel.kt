@@ -120,7 +120,7 @@ class SettingsViewModel(private val graph: AppGraph) : ViewModel() {
                 throw e
             } catch (e: Exception) {
                 _state.update {
-                    it.copy(connectionTest = "Failed: ${e.message?.take(120)}")
+                    it.copy(connectionTest = "Failed: ${e.message?.take(500)}")
                 }
             }
         }

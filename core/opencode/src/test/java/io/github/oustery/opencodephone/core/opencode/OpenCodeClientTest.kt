@@ -98,6 +98,14 @@ class OpenCodeClientTest {
     }
 
     @Test
+    fun `empty username uses the same default as the local server`() = runBlocking {
+        client.config = client.config.copy(username = "", password = "secret")
+        server.enqueue(MockResponse().setBody("""{"healthy":true,"version":"1.19.5"}"""))
+        client.health()
+        assertEquals(okhttp3.Credentials.basic("opencode", "secret"), server.takeRequest().getHeader("Authorization"))
+    }
+
+    @Test
     fun `api error raises OpenCodeApiException`() {
         server.enqueue(MockResponse().setResponseCode(500).setBody("boom"))
         var thrown: OpenCodeApiException? = null

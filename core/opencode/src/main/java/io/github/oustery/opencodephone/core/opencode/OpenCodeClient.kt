@@ -82,7 +82,7 @@ class OpenCodeClient(
     private fun Request.Builder.withAuth(): Request.Builder {
         val pass = config.password
         if (!pass.isNullOrBlank()) {
-            header("Authorization", Credentials.basic(config.username ?: "opencode", pass))
+            header("Authorization", Credentials.basic(config.username?.ifBlank { "opencode" } ?: "opencode", pass))
         }
         return this
     }
