@@ -47,6 +47,14 @@
     <string name="chat_permission_always">Разрешить всегда</string>
     <string name="chat_permission_deny">Отклонить</string>
     <string name="chat_input_hint">Спросите агента…</string>
+    <string name="chat_attach">Прикрепить файл</string>
+    <string name="chat_attachment_remove">Убрать вложение</string>
+    <string name="chat_attach_failed">Не удалось прикрепить файл: %1$s</string>
+    <string name="chat_attach_too_large">Файл больше %1$d МБ</string>
+    <string name="chat_attach_unreadable">Не удалось прочитать файл</string>
+    <string name="chat_size_mb">%1$s МБ</string>
+    <string name="chat_size_kb">%1$s КБ</string>
+    <string name="chat_size_b">%1$s Б</string>
     <string name="chat_send">Отправить</string>
     <string name="chat_stop">Остановить</string>
     <string name="chat_sessions_empty">Сессий пока нет</string>

@@ -26,6 +26,10 @@ sealed interface UiPart {
     ) : UiPart
 
     data class Step(val kind: String) : UiPart
+
+    /** A `file` part (attachment) sent with a user message. */
+    data class FileAttachment(val name: String, val mime: String) : UiPart
+
     data object Unknown : UiPart
 }
 
@@ -54,6 +58,15 @@ object Parts {
                 }
                 "step-start" -> UiPart.Step("start")
                 "step-finish" -> UiPart.Step("finish")
+                "file" -> {
+                    val url = obj.optString("url").orEmpty()
+                    val name = obj.optString("filename")
+                        ?: url.substringAfterLast('/').substringBefore('?').ifBlank { "file" }
+                    UiPart.FileAttachment(
+                        name = name,
+                        mime = obj.optString("mime").orEmpty(),
+                    )
+                }
                 else -> UiPart.Unknown
             }
         } catch (_: Exception) {

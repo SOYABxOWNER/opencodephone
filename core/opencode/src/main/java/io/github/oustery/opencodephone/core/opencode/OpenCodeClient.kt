@@ -63,6 +63,47 @@ private fun isLoopbackHost(host: String): Boolean =
 
 class OpenCodeApiException(val code: Int, message: String) : Exception(message)
 
+/** A local file attached to a prompt as an OpenCode V1 `file` part. */
+data class PromptAttachment(
+    /** Absolute path as seen by the opencode server (already inside proot). */
+    val path: String,
+    val mime: String,
+    val filename: String,
+)
+
+/** Prompt request body for the V1 `/session/:id/prompt_async` endpoint. */
+internal fun promptBody(
+    text: String,
+    providerId: String?,
+    modelId: String?,
+    agent: String?,
+    attachments: List<PromptAttachment>,
+): JsonObject = buildJsonObject {
+    put("parts", buildJsonArray {
+        if (text.isNotBlank()) {
+            add(buildJsonObject {
+                put("type", "text")
+                put("text", text)
+            })
+        }
+        attachments.forEach { file ->
+            add(buildJsonObject {
+                put("type", "file")
+                put("mime", file.mime.ifBlank { "application/octet-stream" })
+                put("filename", file.filename)
+                put("url", "file://${file.path}")
+            })
+        }
+    })
+    if (!providerId.isNullOrBlank() && !modelId.isNullOrBlank()) {
+        putJsonObject("model") {
+            put("providerID", providerId)
+            put("modelID", modelId)
+        }
+    }
+    if (!agent.isNullOrBlank()) put("agent", agent)
+}
+
 /**
  * Kotlin client for the OpenCode V1 headless server (`opencode serve`).
  *
@@ -234,6 +275,10 @@ class OpenCodeClient(
     /**
      * Send a user prompt asynchronously; completion arrives through the
      * `/event` SSE stream (returns HTTP 204 with no body).
+     *
+     * [attachments] become OpenCode V1 `file` parts. [PromptAttachment.path]
+     * must be a path visible to the opencode server (inside proot the
+     * workspace is mounted at `/root/projects`, not at the app-side path).
      */
     suspend fun promptAsync(
         sessionId: String,
@@ -241,23 +286,9 @@ class OpenCodeClient(
         providerId: String? = null,
         modelId: String? = null,
         agent: String? = null,
+        attachments: List<PromptAttachment> = emptyList(),
     ) {
-        val body = buildJsonObject {
-            put("parts", buildJsonArray {
-                add(buildJsonObject {
-                    put("type", "text")
-                    put("text", text)
-                })
-            })
-            if (!providerId.isNullOrBlank() && !modelId.isNullOrBlank()) {
-                putJsonObject("model") {
-                    put("providerID", providerId)
-                    put("modelID", modelId)
-                }
-            }
-            if (!agent.isNullOrBlank()) put("agent", agent)
-        }
-        execute("POST", "/session/${q(sessionId)}/prompt_async", body)
+        execute("POST", "/session/${q(sessionId)}/prompt_async", promptBody(text, providerId, modelId, agent, attachments))
     }
 
     suspend fun abort(sessionId: String) {

@@ -31,8 +31,29 @@ class PartsTest {
     }
 
     @Test
+    fun `parses file part with filename`() {
+        val el = OcJson.lenient.parseToJsonElement(
+            """{"type":"file","mime":"image/png","filename":"photo.png","url":"file:///root/projects/uploads/photo.png"}""",
+        )
+        val part = Parts.parse(el)
+        assertTrue(part is UiPart.FileAttachment)
+        val file = part as UiPart.FileAttachment
+        assertEquals("photo.png", file.name)
+        assertEquals("image/png", file.mime)
+    }
+
+    @Test
+    fun `file part without filename falls back to url basename`() {
+        val el = OcJson.lenient.parseToJsonElement(
+            """{"type":"file","mime":"text/plain","url":"file:///root/projects/uploads/report.txt"}""",
+        )
+        val part = Parts.parse(el)
+        assertEquals("report.txt", (part as UiPart.FileAttachment).name)
+    }
+
+    @Test
     fun `unknown part type degrades safely`() {
-        val el = OcJson.lenient.parseToJsonElement("""{"type":"file","mime":"text/plain"}""")
+        val el = OcJson.lenient.parseToJsonElement("""{"type":"voice-note","mime":"audio/ogg"}""")
         assertEquals(UiPart.Unknown, Parts.parse(el))
     }
 

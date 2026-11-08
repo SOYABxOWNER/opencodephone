@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import io.github.oustery.opencodephone.core.designsystem.OcActionChip
 import io.github.oustery.opencodephone.core.designsystem.OcDisclosure
 import io.github.oustery.opencodephone.core.designsystem.AppMessageShapes
@@ -239,44 +241,125 @@ private fun ChatTimeline(vm: ChatViewModel, state: ChatUiState) {
 
 @Composable
 private fun ChatInput(vm: ChatViewModel, state: ChatUiState) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.Bottom,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        OutlinedTextField(
-            value = state.draft,
-            onValueChange = { vm.updateDraft(it) },
-            modifier = Modifier.weight(1f),
-            placeholder = { Text(stringResource(R.string.chat_input_hint)) },
-            shape = AppMessageShapes.composer,
-            maxLines = 4,
-        )
-        FilledIconButton(
-            onClick = { if (state.busy) vm.abort() else vm.send() },
-            colors = IconButtonDefaults.filledIconButtonColors(
-                containerColor = if (state.busy) {
-                    MaterialTheme.colorScheme.errorContainer
-                } else {
-                    MaterialTheme.colorScheme.primary
-                },
-                contentColor = if (state.busy) {
-                    MaterialTheme.colorScheme.onErrorContainer
-                } else {
-                    MaterialTheme.colorScheme.onPrimary
-                },
-            ),
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        vm.attachUri(uri)
+    }
+    androidx.compose.foundation.layout.Column(modifier = Modifier.fillMaxWidth()) {
+        if (state.attachments.isNotEmpty()) {
+            androidx.compose.foundation.lazy.LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(state.attachments, key = { it.id }) { file ->
+                    AttachmentChip(file) { vm.removeAttachment(file.id) }
+                }
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Icon(
-                painterResource(if (state.busy) R.drawable.ic_stop else R.drawable.ic_send),
-                contentDescription = if (state.busy) {
-                    stringResource(R.string.chat_stop)
-                } else {
-                    stringResource(R.string.chat_send)
-                },
+            IconButton(
+                onClick = { picker.launch(arrayOf("*/*")) },
+                enabled = !state.busy,
+                modifier = Modifier.padding(bottom = 2.dp),
+            ) {
+                Icon(
+                    painterResource(R.drawable.ic_attach),
+                    contentDescription = stringResource(R.string.chat_attach),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            OutlinedTextField(
+                value = state.draft,
+                onValueChange = { vm.updateDraft(it) },
+                modifier = Modifier.weight(1f),
+                placeholder = { Text(stringResource(R.string.chat_input_hint)) },
+                shape = AppMessageShapes.composer,
+                maxLines = 4,
             )
+            FilledIconButton(
+                onClick = { if (state.busy) vm.abort() else vm.send() },
+                colors = IconButtonDefaults.filledIconButtonColors(
+                    containerColor = if (state.busy) {
+                        MaterialTheme.colorScheme.errorContainer
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    },
+                    contentColor = if (state.busy) {
+                        MaterialTheme.colorScheme.onErrorContainer
+                    } else {
+                        MaterialTheme.colorScheme.onPrimary
+                    },
+                ),
+            ) {
+                Icon(
+                    painterResource(if (state.busy) R.drawable.ic_stop else R.drawable.ic_send),
+                    contentDescription = if (state.busy) {
+                        stringResource(R.string.chat_stop)
+                    } else {
+                        stringResource(R.string.chat_send)
+                    },
+                )
+            }
         }
     }
+}
+
+/** Pending attachment above the composer; removing it deletes the workspace copy. */
+@Composable
+private fun AttachmentChip(file: PendingAttachment, onRemove: () -> Unit) {
+    Surface(
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        modifier = Modifier.padding(vertical = 4.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(
+                painterResource(R.drawable.ic_file),
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+            )
+            Column {
+                Text(
+                    file.displayName,
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 160.dp),
+                )
+                Text(
+                    formatAttachmentSize(file.size),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f),
+                )
+            }
+            IconButton(onClick = onRemove, modifier = Modifier.size(32.dp)) {
+                Icon(
+                    painterResource(R.drawable.ic_close),
+                    contentDescription = stringResource(R.string.chat_attachment_remove),
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun formatAttachmentSize(bytes: Long): String {
+    val text = when {
+        bytes >= 1024 * 1024 -> stringResource(R.string.chat_size_mb, String.format("%.1f", bytes / (1024f * 1024f)))
+        bytes >= 1024 -> stringResource(R.string.chat_size_kb, String.format("%.1f", bytes / 1024f))
+        else -> stringResource(R.string.chat_size_b, bytes.toString())
+    }
+    return text
 }
 
 @Composable
@@ -307,8 +390,21 @@ private fun PartView(part: UiPart, onCopy: (String) -> Unit) {
     when (part) {
         is UiPart.Text -> Column {
             SelectionText(part.text)
-            TextButton(onClick = { onCopy(part.text) }) {
-                Text(stringResource(R.string.action_copy), style = MaterialTheme.typography.labelSmall)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                androidx.compose.material3.IconButton(
+                    onClick = { onCopy(part.text) },
+                    modifier = Modifier.size(28.dp),
+                ) {
+                    Icon(
+                        painterResource(R.drawable.ic_copy),
+                        contentDescription = stringResource(R.string.action_copy),
+                        modifier = Modifier.size(15.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
         is UiPart.Reasoning -> OcDisclosure(
@@ -319,9 +415,39 @@ private fun PartView(part: UiPart, onCopy: (String) -> Unit) {
             Text(part.text, style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        is UiPart.FileAttachment -> AttachmentPartView(part)
         is UiPart.Tool -> ToolCard(part)
         UiPart.Unknown -> Unit
         is UiPart.Step -> Unit
+    }
+}
+
+/** A `file` part stored in the message history. */
+@Composable
+private fun AttachmentPartView(part: UiPart.FileAttachment) {
+    Surface(
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(
+                painterResource(R.drawable.ic_attach),
+                contentDescription = null,
+                modifier = Modifier.size(14.dp),
+            )
+            Text(
+                part.name,
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.widthIn(max = 220.dp),
+            )
+        }
     }
 }
 

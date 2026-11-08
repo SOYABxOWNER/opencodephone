@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -123,7 +124,7 @@ fun OcEmptyState(
             textAlign = TextAlign.Center,
         )
         if (actionText != null && onAction != null) {
-            TextButton(onClick = onAction) { Text(actionText) }
+            FilledTonalButton(onClick = onAction) { Text(actionText) }
         }
     }
 }

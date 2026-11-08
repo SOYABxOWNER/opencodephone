@@ -47,6 +47,14 @@
     <string name="chat_permission_always">Allow always</string>
     <string name="chat_permission_deny">Deny</string>
     <string name="chat_input_hint">Ask the agent…</string>
+    <string name="chat_attach">Attach file</string>
+    <string name="chat_attachment_remove">Remove attachment</string>
+    <string name="chat_attach_failed">Could not attach file: %1$s</string>
+    <string name="chat_attach_too_large">File is larger than %1$d MiB</string>
+    <string name="chat_attach_unreadable">The file could not be read</string>
+    <string name="chat_size_mb">%1$s MB</string>
+    <string name="chat_size_kb">%1$s KB</string>
+    <string name="chat_size_b">%1$s B</string>
     <string name="chat_send">Send</string>
     <string name="chat_stop">Stop</string>
     <string name="chat_sessions_empty">No sessions yet</string>

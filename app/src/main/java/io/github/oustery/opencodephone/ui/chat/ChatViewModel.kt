@@ -1,9 +1,12 @@
 package io.github.oustery.opencodephone.ui.chat
 
+import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.oustery.opencodephone.AppGraph
 import io.github.oustery.opencodephone.core.linuxenv.ServerState
+import io.github.oustery.opencodephone.core.linuxenv.PRootCommand
 import io.github.oustery.opencodephone.core.model.MessageWithParts
 import io.github.oustery.opencodephone.core.model.OcJson
 import io.github.oustery.opencodephone.core.model.PermissionRequest
@@ -34,6 +37,21 @@ import kotlinx.serialization.json.put
 
 enum class ChatConnection { DISCONNECTED, CONNECTING, CONNECTED, ERROR }
 
+/** Maximum attachment size copied into the workspace (OpenCode's own limit). */
+const val MAX_ATTACHMENT_BYTES: Int = 20 * 1024 * 1024
+
+/** A file picked in the chat composer, already copied into the workspace. */
+data class PendingAttachment(
+    val id: String,
+    val displayName: String,
+    val mime: String,
+    val size: Long,
+    /** Absolute path on the app filesystem (inside the workspace). */
+    val absolutePath: String,
+    /** Same file as the opencode server sees it (workspace mount point). */
+    val envPath: String,
+)
+
 data class UiMessage(
     val id: String,
     val role: String,
@@ -54,6 +72,7 @@ data class ChatUiState(
     val permission: PermissionRequest? = null,
     val showSessions: Boolean = false,
     val showModels: Boolean = false,
+    val attachments: List<PendingAttachment> = emptyList(),
     val error: String? = null,
 )
 
@@ -79,7 +98,7 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                     endpointEpoch++
                     if (activeClient !== graph.client) {
                         activeClient = graph.client
-                        _state.update { ChatUiState(draft = it.draft) }
+                        _state.update { ChatUiState(draft = it.draft, attachments = it.attachments) }
                     }
                     if (mode == ServerMode.REMOTE) {
                         connect()
@@ -273,6 +292,116 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
 
     fun updateDraft(value: String) = _state.update { it.copy(draft = value) }
 
+    /**
+     * Copy a picked content [Uri] into the workspace (`uploads/`), from where
+     * the agent can read it and OpenCode resolves the `file` part. Shows an
+     * error in the composer on failure.
+     */
+    fun attachUri(uri: Uri?) {
+        if (uri == null) return
+        val context = graph.appContext
+        viewModelScope.launch {
+            try {
+                val attachment = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    copyToWorkspace(context, uri)
+                }
+                _state.update { it.copy(attachments = it.attachments + attachment) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update {
+                    it.copy(
+                        error = context.getString(
+                            io.github.oustery.opencodephone.R.string.chat_attach_failed,
+                            e.message ?: "unknown",
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    private fun copyToWorkspace(
+        context: android.content.Context,
+        uri: Uri,
+    ): PendingAttachment {
+        val resolver = context.contentResolver
+        val displayName = queryDisplayName(resolver, uri)
+        val mime = resolver.getType(uri).orEmpty()
+        val uploads = java.io.File(graph.layout.workspaceDir, "uploads")
+        uploads.mkdirs()
+        val target = uniqueTarget(uploads, displayName)
+        resolver.openInputStream(uri)?.use { input ->
+            java.io.FileOutputStream(target).use { output ->
+                val buffer = ByteArray(64 * 1024)
+                var total = 0L
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    total += count
+                    if (total > MAX_ATTACHMENT_BYTES) {
+                        output.close()
+                        target.delete()
+                        val limitMb = MAX_ATTACHMENT_BYTES / (1024 * 1024)
+                        throw IllegalStateException(
+                            context.getString(io.github.oustery.opencodephone.R.string.chat_attach_too_large, limitMb),
+                        )
+                    }
+                    output.write(buffer, 0, count)
+                }
+            }
+        } ?: run {
+            throw IllegalStateException(context.getString(io.github.oustery.opencodephone.R.string.chat_attach_unreadable))
+        }
+        val relative = target.relativeTo(graph.layout.workspaceDir).path
+        return PendingAttachment(
+            id = java.util.UUID.randomUUID().toString(),
+            displayName = displayName,
+            mime = mime,
+            size = target.length(),
+            absolutePath = target.absolutePath,
+            envPath = PRootCommand.WORKSPACE_MOUNT + "/" + relative,
+        )
+    }
+
+    private fun queryDisplayName(
+        resolver: android.content.ContentResolver,
+        uri: Uri,
+    ): String {
+        resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+            val nameIdx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (nameIdx >= 0 && cursor.moveToFirst()) {
+                val name = cursor.getString(nameIdx)
+                if (!name.isNullOrBlank()) return name.take(120)
+            }
+        }
+        return uri.lastPathSegment?.take(120) ?: "file"
+    }
+
+    /** Keep the picked name; only disambiguate on collision or unsafe characters. */
+    private fun uniqueTarget(dir: java.io.File, displayName: String): java.io.File {
+        val base = displayName.substringAfterLast('/').ifBlank { "file" }
+        val safe = base.replace(Regex("[\\\\/:*?\"<>|\u0000-\u001f]"), "_").ifBlank { "file" }
+        val candidate = java.io.File(dir, safe)
+        if (!candidate.exists()) return candidate
+        val dot = safe.lastIndexOf('.')
+        val stem = if (dot > 0) safe.substring(0, dot) else safe
+        val ext = if (dot > 0) safe.substring(dot) else ""
+        var index = 1
+        while (true) {
+            val numbered = java.io.File(dir, "$stem-$index$ext")
+            if (!numbered.exists()) return numbered
+            index++
+        }
+    }
+
+    fun removeAttachment(id: String) {
+        val removed = _state.value.attachments.firstOrNull { it.id == id } ?: return
+        _state.update { it.copy(attachments = it.attachments.filterNot { a -> a.id == id }) }
+        // The copy exists only for this unsent draft; a sent one stays for the agent.
+        java.io.File(removed.absolutePath).delete()
+    }
+
     fun newSession() {
         val client = activeClient
         val ticket = endpointEpoch
@@ -306,14 +435,17 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
 
     fun send() {
         val current = _state.value
+        if (current.busy) return
         val sessionId = current.activeSessionId ?: return
         val text = current.draft.trim()
-        if (text.isEmpty()) return
+        if (text.isEmpty() && current.attachments.isEmpty()) return
         if (current.modelSelection == null) {
             _state.update { it.copy(error = graph.appContext.getString(io.github.oustery.opencodephone.R.string.chat_models_empty)) }
             return
         }
-        _state.update { it.copy(draft = "", busy = true) }
+        val sentDraft = text
+        val sentAttachments = current.attachments
+        _state.update { it.copy(draft = "", attachments = emptyList(), busy = true) }
         val client = activeClient
         val ticket = endpointEpoch
         viewModelScope.launch {
@@ -321,16 +453,31 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                 val selection = current.modelSelection
                 client.promptAsync(
                     sessionId = sessionId,
-                    text = text,
+                    text = sentDraft,
                     providerId = selection?.providerId,
                     modelId = selection?.modelId,
                     agent = null,
+                    attachments = sentAttachments.map { file ->
+                        io.github.oustery.opencodephone.core.opencode.PromptAttachment(
+                            path = file.envPath,
+                            mime = file.mime,
+                            filename = file.displayName,
+                        )
+                    },
                 )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 if (ticket != endpointEpoch) return@launch
-                _state.update { it.copy(error = e.message, busy = false) }
+                // Restore the composer so nothing the user typed is lost.
+                _state.update {
+                    it.copy(
+                        error = e.message,
+                        busy = false,
+                        draft = if (it.draft.isBlank()) sentDraft else it.draft,
+                        attachments = it.attachments + sentAttachments,
+                    )
+                }
             }
         }
     }

@@ -88,6 +88,50 @@ class OpenCodeClientTest {
     }
 
     @Test
+    fun `prompt async with attachments sends V1 file parts`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(204))
+        client.promptAsync(
+            sessionId = "ses_1",
+            text = "check this",
+            providerId = null,
+            modelId = null,
+            agent = null,
+            attachments = listOf(
+                PromptAttachment(
+                    path = "/root/projects/uploads/report.txt",
+                    mime = "text/plain",
+                    filename = "report.txt",
+                ),
+                PromptAttachment(path = "/root/projects/uploads/img.png", mime = "", filename = "img.png"),
+            ),
+        )
+        val recorded = server.takeRequest()
+        assertEquals("/session/ses_1/prompt_async", recorded.path)
+        val body = recorded.body.readUtf8()
+        // Text part first, then one file part per attachment in order.
+        assertTrue(body.contains("\"type\":\"text\""))
+        assertTrue(body.contains("\"text\":\"check this\""))
+        assertTrue(body.contains("\"type\":\"file\""))
+        assertTrue(body.contains("\"mime\":\"text/plain\""))
+        assertTrue(body.contains("\"filename\":\"report.txt\""))
+        assertTrue(body.contains("\"url\":\"file:///root/projects/uploads/report.txt\""))
+        assertTrue(body.contains("\"mime\":\"application/octet-stream\""))
+        assertTrue(body.contains("\"url\":\"file:///root/projects/uploads/img.png\""))
+    }
+
+    @Test
+    fun `prompt body skips empty text part when only files are sent`() {
+        val body = promptBody("   ", providerId = null, modelId = null, agent = null, attachments = listOf(
+            PromptAttachment(path = "/root/projects/uploads/a.png", mime = "image/png", filename = "a.png"),
+        ))
+        val text = kotlinx.serialization.json.Json.encodeToString(
+            kotlinx.serialization.json.JsonObject.serializer(), body,
+        )
+        assertTrue(text.contains("\"type\":\"file\""))
+        assertTrue(!text.contains("\"type\":\"text\""))
+    }
+
+    @Test
     fun `basic auth header is attached when password configured`() = runBlocking {
         client.config = client.config.copy(username = "opencode", password = "secret")
         server.enqueue(MockResponse().setBody("""{"healthy":true,"version":"1.19.5"}"""))
