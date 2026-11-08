@@ -29,6 +29,25 @@ class MainActivity : ComponentActivity() {
         setContent {
             OpenCodePhoneTheme {
                 val startup by app.startup.collectAsStateWithLifecycle()
+                val resetConfirm = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+                if (resetConfirm.value && startup == AppStartup.Failed) {
+                    androidx.compose.material3.AlertDialog(
+                        onDismissRequest = { resetConfirm.value = false },
+                        title = { androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(R.string.startup_reset)) },
+                        text = { androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(R.string.startup_reset_warning)) },
+                        confirmButton = {
+                            androidx.compose.material3.TextButton(onClick = {
+                                resetConfirm.value = false
+                                app.retryStartup(resetSecureSettings = true)
+                            }) { androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(R.string.startup_reset)) }
+                        },
+                        dismissButton = {
+                            androidx.compose.material3.TextButton(onClick = { resetConfirm.value = false }) {
+                                androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(R.string.action_cancel))
+                            }
+                        },
+                    )
+                }
                 when (val state = startup) {
                     is AppStartup.Ready -> AppRoot(graph = state.graph)
                     AppStartup.Loading -> androidx.compose.material3.Text(
@@ -41,6 +60,9 @@ class MainActivity : ComponentActivity() {
                         androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(R.string.startup_failed))
                         androidx.compose.material3.Button(onClick = { app.retryStartup() }) {
                             androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(R.string.action_retry))
+                        }
+                        androidx.compose.material3.TextButton(onClick = { resetConfirm.value = true }) {
+                            androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(R.string.startup_reset))
                         }
                     }
                 }

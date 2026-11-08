@@ -24,6 +24,7 @@ data class SettingsUiState(
     val serverPortText: String = "4096",
     val providerSyncAllowed: Boolean = false,
     val connectionTest: String? = null,
+    val serverDirty: Boolean = false,
     val bootstrap: BootstrapState = BootstrapState(),
     val serverStateLabel: String = "",
     val serverError: String? = null,
@@ -67,11 +68,12 @@ class SettingsViewModel(private val graph: AppGraph) : ViewModel() {
         }
     }
 
-    fun restartServer() = graph.restartLocalServer()
+    fun restartServer() { if (!_state.value.serverDirty) graph.restartLocalServer() }
 
     fun reload() {
         _state.update {
             it.copy(
+                serverDirty = false,
                 legacyPlaintextSettings = settings.hasLegacyPlaintextSettings,
                 server = settings.serverConfig(),
                 serverPortText = settings.serverConfig().port.toString(),
@@ -86,14 +88,14 @@ class SettingsViewModel(private val graph: AppGraph) : ViewModel() {
     // ------------------------------------------------------------- Server
 
     fun updateServer(transform: (ServerConfig) -> ServerConfig) {
-        _state.update { it.copy(server = transform(it.server), providerSyncAllowed = false) }
+        _state.update { it.copy(serverDirty = true, server = transform(it.server), providerSyncAllowed = false) }
     }
     fun setMode(mode: ServerMode) = updateServer { it.copy(mode = mode) }
     fun setHost(value: String) = updateServer { it.copy(host = value.trim()) }
-    fun setPort(value: String) = _state.update { it.copy(serverPortText = value, providerSyncAllowed = false) }
+    fun setPort(value: String) = _state.update { it.copy(serverDirty = true, serverPortText = value, providerSyncAllowed = false) }
     fun setUsername(value: String) = updateServer { it.copy(username = value.trim()) }
     fun setPassword(value: String) = updateServer { it.copy(password = value) }
-    fun setProviderSyncAllowed(value: Boolean) = _state.update { it.copy(providerSyncAllowed = value) }
+    fun setProviderSyncAllowed(value: Boolean) = _state.update { it.copy(serverDirty = true, providerSyncAllowed = value) }
 
     fun applyServer() {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
@@ -109,7 +111,7 @@ class SettingsViewModel(private val graph: AppGraph) : ViewModel() {
                 settings.setProviderSyncAllowed(cfg, state.providerSyncAllowed)
                 graph.refreshClient()
                 graph.credentialsChanged()
-                _state.update { it.copy(server = cfg, connectionTest = "Applied") }
+                _state.update { it.copy(serverDirty = it.server != state.server || it.serverPortText != state.serverPortText || it.providerSyncAllowed != state.providerSyncAllowed, server = cfg, connectionTest = "Applied") }
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
             catch (e: Exception) { _state.update { it.copy(connectionTest = e.message) } }
         }
@@ -128,6 +130,7 @@ class SettingsViewModel(private val graph: AppGraph) : ViewModel() {
     }
 
     fun testConnection() {
+        if (_state.value.serverDirty) return
         _state.update { it.copy(connectionTest = "…") }
         viewModelScope.launch {
             val tempClient = OpenCodeClient(config = AppGraph.buildClientConfig(settings))

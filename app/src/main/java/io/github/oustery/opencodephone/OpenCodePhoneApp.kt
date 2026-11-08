@@ -155,11 +155,13 @@ class OpenCodePhoneApp : Application() {
     }
 
     @Synchronized
-    fun retryStartup() {
+    fun retryStartup(resetSecureSettings: Boolean = false) {
+        if (resetSecureSettings && _startup.value != AppStartup.Failed) return
         if (startupJob?.isActive == true || graphOrNull != null) return
         _startup.value = AppStartup.Loading
         startupJob = startupScope.launch {
             try {
+                if (resetSecureSettings) SettingsStore.resetEncryptedSettings(this@OpenCodePhoneApp)
                 val graph = AppGraph(this@OpenCodePhoneApp)
                 _startup.value = AppStartup.Ready(graph)
                 graph.bootstrap.start()

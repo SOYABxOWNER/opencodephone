@@ -142,7 +142,7 @@ fun SettingsScreen(graph: AppGraph) {
                             OutlinedButton(onClick = vm::cancelServerChanges) { Text(stringResource(R.string.action_cancel)) }
                         }
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = { vm.testConnection() }) {
+                            Button(onClick = { vm.testConnection() }, enabled = !state.serverDirty) {
                                 Text(stringResource(R.string.settings_server_test))
                             }
                             OcStatusChip(
@@ -153,7 +153,7 @@ fun SettingsScreen(graph: AppGraph) {
                         if (state.server.mode == ServerMode.LOCAL) {
                             OutlinedButton(
                                 onClick = { vm.restartServer() },
-                                enabled = state.bootstrap.phase == io.github.oustery.opencodephone.core.model.BootstrapPhase.READY,
+                                enabled = !state.serverDirty && state.bootstrap.phase == io.github.oustery.opencodephone.core.model.BootstrapPhase.READY,
                             ) {
                                 Text(stringResource(R.string.settings_server_restart))
                             }

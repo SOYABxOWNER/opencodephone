@@ -132,4 +132,6 @@
     <string name="settings_import_legacy">Import missing settings securely and delete the old plaintext file</string>
     <string name="settings_provider_consent">Allow sending saved provider keys to this server and removing keys previously managed here. Apply to save consent.</string>
     <string name="action_apply">Apply</string>
+    <string name="startup_reset">Reset encrypted settings</string>
+    <string name="startup_reset_warning">Permanently delete encrypted settings and their Keystore key? Provider keys, Git token, connection settings and local server secret will be lost. Projects and the Linux environment are preserved. Legacy plaintext settings are not deleted. Rotate any previously exposed keys. Retry first if the Keystore may be temporarily unavailable.</string>
 </resources>

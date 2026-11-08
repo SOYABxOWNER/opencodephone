@@ -181,7 +181,14 @@ class SettingsStore(private val context: Context) {
 
     fun setBootstrapCompleted() = edit { it.putBoolean(KEY_BOOTSTRAP_DONE, true) }
 
-    private companion object {
+    companion object {
+        /** Destructive recovery must only be invoked after explicit UI confirmation. */
+        fun resetEncryptedSettings(context: Context) {
+            check(context.deleteSharedPreferences("opencodephone_secure")) { "Cannot remove encrypted settings" }
+            val keys = java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+            keys.deleteEntry(MasterKey.DEFAULT_MASTER_KEY_ALIAS)
+        }
+
         const val KEY_LOCAL_SERVER_SECRET = "local_server_secret"
         const val KEY_SERVER_MODE = "server_mode"
         const val KEY_SERVER_HOST = "server_host"

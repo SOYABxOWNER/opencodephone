@@ -1,6 +1,8 @@
 package io.github.oustery.opencodephone.core.linuxenv
 
 import java.net.URI
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 
 /** Credentials live only in the child environment, never URL, argv, config or helper files. */
 object GitAuth {
@@ -46,8 +48,12 @@ object GitAuth {
                 } else value
             }
             if (cleaned != values) {
-                check(run(listOf("git", "config", "--local", "--unset-all", key)).exitCode == 0)
-                for (value in cleaned) check(run(listOf("git", "config", "--local", "--add", key, value)).exitCode == 0)
+                // Each command has the runtime's process timeout. Do not let view/project
+                // cancellation interrupt the remove/repopulate transaction and lose URLs.
+                withContext(NonCancellable) {
+                    check(run(listOf("git", "config", "--local", "--unset-all", key)).exitCode == 0)
+                    for (value in cleaned) check(run(listOf("git", "config", "--local", "--add", key, value)).exitCode == 0)
+                }
             }
         }
     }

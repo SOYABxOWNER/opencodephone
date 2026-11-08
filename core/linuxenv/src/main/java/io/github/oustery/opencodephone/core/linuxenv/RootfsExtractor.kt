@@ -39,7 +39,8 @@ object RootfsExtractor {
                                 else physicalParent.resolve(entry.linkName)
                             within(desired)
                             Files.deleteIfExists(target)
-                            Files.createSymbolicLink(target, physicalParent.relativize(desired.normalize()))
+                            val relative = physicalParent.relativize(desired.normalize())
+                            Files.createSymbolicLink(target, if (relative.toString().isEmpty()) java.nio.file.Paths.get(".") else relative)
                         }
                         entry.isLink -> {
                             within(target)
