@@ -57,8 +57,8 @@ SHA-256 verified while streaming), installs tools, installs the OpenCode CLI
 
 - [Research: OpenCode platform](docs/research/01-opencode-platform.md)
 - [Research: Debian on Android](docs/research/02-android-linux-env.md)
-- [ADRs 001–006](docs/adr/) (environment, native UI, installation,
-  design system, ABI splits, terminal)
+- [ADRs 001–008](docs/adr/) (environment, native UI, installation,
+  design system, ABI splits, terminal, targetSdk, toolset bootstrap)
 
 ## Releases
 
@@ -73,6 +73,27 @@ Per-architecture APKs are built automatically:
 - Every push to `main` → CI runs unit tests and uploads **debug APK artifacts**.
 - Every `v*` tag → signed **release APKs** attached to a GitHub Release
   (release keystore lives in repository Secrets, never in the repository).
+- Each release also carries `toolset-<arch>.tar.gz` assets — digest-pinned
+  tool bundles the app downloads during first-time setup (see
+  `docs/adr/ADR-008-toolset-bootstrap.md`). Rebuild them with
+  `tools/build_toolset.py <arch>…` and update the digests in `Pins`.
+
+## Troubleshooting
+
+- **"Setup failed (exit 255)" / processes killed during setup.** Android 12+
+  kills high-CPU child processes of apps (the "phantom process killer"), and
+  aggressive battery managers do the same. Keep the app on screen during
+  setup, plug the phone in, and disable battery optimization for
+  OpenCodePhone (Settings → Apps → OpenCodePhone → Battery → Unrestricted).
+  On Android 13+ you can also enable *Developer options → Disable child
+  process restrictions* (or run
+  `adb shell device_config put activity_manager max_phantom_processes 2147483647`).
+  Since v0.1.1 the setup itself runs no heavy work inside the environment,
+  so this should no longer be needed for the initial install.
+- **Where are the setup logs?** The failure dialog shows the last log lines;
+  the full log is stored at `Android/data/io.github.oustery.opencodephone/
+  files/linuxenv/bootstrap.log`.
+
 
 ## Building locally
 

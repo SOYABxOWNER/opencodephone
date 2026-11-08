@@ -21,13 +21,15 @@
     <string name="bootstrap_preparing">Preparing environment…</string>
     <string name="bootstrap_failed_title">Setup failed</string>
     <string name="bootstrap_retry">Retry setup</string>
-    <string name="bootstrap_note">First-time setup downloads Debian (~50 MB) and the OpenCode CLI (~40 MB)</string>
+    <string name="bootstrap_note">First-time setup downloads Debian (~50 MB), the toolset (~65 MB) and the OpenCode CLI (~40 MB)</string>
     <string name="bootstrap_step_rootfs">Download Debian root filesystem</string>
     <string name="bootstrap_step_extract">Extract root filesystem</string>
-    <string name="bootstrap_step_tools">Install tools (git, curl)</string>
+    <string name="bootstrap_step_tools">Install tools (git, curl, ripgrep)</string>
     <string name="bootstrap_step_opencode">Install OpenCode CLI</string>
     <string name="bootstrap_step_configure">Configure environment</string>
     <string name="bootstrap_step_failed">failed</string>
+    <string name="bootstrap_details">Log</string>
+    <string name="bootstrap_hint_kill">If the error mentions processes being killed, keep the app on screen, plug the phone in and disable battery optimization for OpenCodePhone (Settings → Battery → Unrestricted).</string>
 
     <!-- Chat -->
     <string name="chat_sessions">Sessions</string>

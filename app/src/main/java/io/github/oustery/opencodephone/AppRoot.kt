@@ -82,6 +82,17 @@ fun AppRoot(graph: AppGraph) {
         }
     }
 
+    // Hold the foreground service while setup is running so Android does not
+    // kill the bootstrap (phantom process killer, cached-app freezer).
+    LaunchedEffect(bootstrapState.phase) {
+        when (bootstrapState.phase) {
+            BootstrapPhase.READY, BootstrapPhase.FAILED -> {
+                if (serverState !is ServerState.Running) EnvService.stop(context)
+            }
+            else -> EnvService.start(context)
+        }
+    }
+
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val isWide = maxWidth >= 600.dp
         if (isWide) {

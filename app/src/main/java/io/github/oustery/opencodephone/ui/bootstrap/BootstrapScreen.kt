@@ -25,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -42,6 +43,15 @@ import io.github.oustery.opencodephone.core.model.BootstrapPhase
 @Composable
 fun BootstrapScreen(graph: AppGraph) {
     val state by graph.bootstrap.state.collectAsStateWithLifecycle()
+
+    // Setup runs heavy downloads and process work; keep the screen (and thus
+    // the app in the foreground) on so Android does not freeze or kill us.
+    val view = androidx.compose.ui.platform.LocalView.current
+    androidx.compose.runtime.DisposableEffect(state.phase) {
+        val active = state.phase != BootstrapPhase.FAILED && state.phase != BootstrapPhase.READY
+        if (active) view.keepScreenOn = true
+        onDispose { view.keepScreenOn = false }
+    }
 
     Column(
         modifier = Modifier
@@ -80,6 +90,33 @@ fun BootstrapScreen(graph: AppGraph) {
                         )
                         Text(
                             text = state.error ?: "",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        if (state.log.isNotEmpty()) {
+                            Surface(
+                                shape = MaterialTheme.shapes.small,
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Text(
+                                        text = stringResource(R.string.bootstrap_details),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    Spacer(Modifier.height(6.dp))
+                                    Text(
+                                        text = state.log.takeLast(12).joinToString("\n"),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                        Text(
+                            text = stringResource(R.string.bootstrap_hint_kill),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

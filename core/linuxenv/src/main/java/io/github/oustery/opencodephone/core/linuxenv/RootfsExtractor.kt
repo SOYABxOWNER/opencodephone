@@ -16,13 +16,15 @@ import java.util.zip.GZIPInputStream
 object RootfsExtractor {
 
     /**
-     * Extract a tar.gz rootfs archive into [destDir], replacing any previous
-     * content. Symlinks are recreated (with a copy fallback); executable bits
+     * Extract a tar.gz rootfs archive into [destDir]. When [replace] is true
+     * any previous content is removed first; when false the archive is
+     * merged into the existing tree (used for the toolset overlay).
+     * Symlinks are recreated (with a copy fallback); executable bits
      * from the tar mode are preserved.
      */
-    fun extract(tarGz: File, destDir: File) {
+    fun extract(tarGz: File, destDir: File, replace: Boolean = true) {
         check(tarGz.exists()) { "Archive not found: $tarGz" }
-        if (destDir.exists()) {
+        if (replace && destDir.exists()) {
             destDir.deleteRecursively()
         }
         destDir.mkdirs()
@@ -42,6 +44,11 @@ object RootfsExtractor {
 
                     entry.isSymbolicLink -> {
                         target.parentFile?.mkdirs()
+                        if (target.exists() || Files.isSymbolicLink(target.toPath())) {
+                            // Overlay mode: a later package may legitimately
+                            // replace an earlier symlink or file.
+                            target.delete()
+                        }
                         createSymlink(target, entry.linkName, destDir)
                     }
 

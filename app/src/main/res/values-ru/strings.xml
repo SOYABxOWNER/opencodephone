@@ -21,13 +21,15 @@
     <string name="bootstrap_preparing">Подготовка окружения…</string>
     <string name="bootstrap_failed_title">Ошибка установки</string>
     <string name="bootstrap_retry">Повторить установку</string>
-    <string name="bootstrap_note">При первой настройке скачиваются Debian (~50 МБ) и OpenCode CLI (~40 МБ)</string>
+    <string name="bootstrap_note">При первой настройке скачиваются Debian (~50 МБ), набор инструментов (~65 МБ) и OpenCode CLI (~40 МБ)</string>
     <string name="bootstrap_step_rootfs">Загрузка корневой файловой системы Debian</string>
     <string name="bootstrap_step_extract">Распаковка файловой системы</string>
-    <string name="bootstrap_step_tools">Установка инструментов (git, curl)</string>
+    <string name="bootstrap_step_tools">Установка инструментов (git, curl, ripgrep)</string>
     <string name="bootstrap_step_opencode">Установка OpenCode CLI</string>
     <string name="bootstrap_step_configure">Настройка окружения</string>
     <string name="bootstrap_step_failed">ошибка</string>
+    <string name="bootstrap_details">Журнал</string>
+    <string name="bootstrap_hint_kill">Если в ошибке сказано, что процессы были убиты системой — держите приложение на экране, подключите зарядку и отключите оптимизацию батареи для OpenCodePhone (Настройки → Приложения → Без ограничений).</string>
 
     <!-- Chat -->
     <string name="chat_sessions">Сессии</string>

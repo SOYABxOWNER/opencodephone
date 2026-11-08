@@ -24,3 +24,10 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Toolset builder scratch
+/.work/
+/.out/
+
+# Kotlin build session dir
+.kotlin/

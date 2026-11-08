@@ -27,6 +27,9 @@ class EnvLayout(private val context: Context) {
     val hostsFile: File get() = File(baseDir, "hosts")
     val installedStamp: File get() = File(baseDir, ".installed")
 
+    /** Append-only log of the latest bootstrap run (for diagnostics). */
+    val bootstrapLogFile: File get() = File(baseDir, "bootstrap.log")
+
     /** Location of the opencode CLI inside the root filesystem. */
     fun opencodeBin(): File = File(rootfsDir, "usr/local/bin/opencode")
 

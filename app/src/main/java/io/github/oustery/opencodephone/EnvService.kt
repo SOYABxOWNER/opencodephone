@@ -10,6 +10,7 @@ import androidx.core.app.NotificationCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import io.github.oustery.opencodephone.core.linuxenv.ServerState
+import io.github.oustery.opencodephone.core.model.BootstrapPhase
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
@@ -29,16 +30,35 @@ class EnvService : LifecycleService() {
         startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.env_service_starting)))
         lifecycleScope.launch {
             graph.runtime.serverState.collectLatest { state ->
-                val text = when (state) {
+                updateNotification(when (state) {
                     is ServerState.Running -> getString(R.string.env_service_running, state.port)
                     is ServerState.Starting -> getString(R.string.env_service_starting)
                     is ServerState.Failed -> getString(R.string.env_service_failed, state.message.take(80))
                     ServerState.Stopped -> getString(R.string.env_service_stopped)
-                }
-                val nm = getSystemService(NotificationManager::class.java)
-                nm.notify(NOTIFICATION_ID, buildNotification(text))
+                })
             }
         }
+        // During setup the service keeps the app at foreground importance so
+        // Android is less likely to kill the bootstrap child processes.
+        lifecycleScope.launch {
+            graph.bootstrap.state.collectLatest { state ->
+                when (state.phase) {
+                    BootstrapPhase.READY ->
+                        if (graph.runtime.serverState.value is ServerState.Stopped) {
+                            updateNotification(getString(R.string.env_service_stopped))
+                        }
+                    BootstrapPhase.FAILED ->
+                        updateNotification(getString(R.string.env_service_failed, state.error?.take(80).orEmpty()))
+                    else ->
+                        updateNotification(state.label.ifEmpty { getString(R.string.bootstrap_preparing) })
+                }
+            }
+        }
+    }
+
+    private fun updateNotification(text: String) {
+        val nm = getSystemService(NotificationManager::class.java)
+        nm.notify(NOTIFICATION_ID, buildNotification(text))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
