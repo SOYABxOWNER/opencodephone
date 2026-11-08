@@ -53,8 +53,8 @@
     <string name="chat_session_untitled">Сессия без названия</string>
     <string name="chat_new_session">Новая сессия</string>
     <string name="chat_models_title">Модели</string>
-    <string name="chat_models_hint">Провайдерам нужен API-ключ в настройках, прежде чем их можно использовать.</string>
-    <string name="chat_models_empty">Сервер пока не сообщил ни о одном провайдере.</string>
+    <string name="chat_models_hint">Модели OpenCode, доступные на этом сервере. Для бесплатных моделей свой API-ключ провайдера не нужен; доступность и лимиты определяет OpenCode.</string>
+    <string name="chat_models_empty">Нет доступных моделей OpenCode. Проверьте сеть сервера и настройки провайдера OpenCode, затем переподключитесь.</string>
     <string name="chat_provider_connected">подключён</string>
     <string name="chat_provider_no_key">нет ключа</string>
     <string name="chat_model_selected">выбрана</string>
@@ -149,4 +149,5 @@
     <string name="update_check">Проверить обновления</string>
     <string name="update_download">Скачать обновление</string>
     <string name="update_install">Установить обновление</string>
+    <string name="chat_model_free">Бесплатно</string>
 </resources>

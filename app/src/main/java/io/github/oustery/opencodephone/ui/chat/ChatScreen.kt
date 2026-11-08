@@ -430,7 +430,10 @@ private fun ModelsSheet(vm: ChatViewModel, state: ChatUiState) {
                     }
                 }
                 items(
-                    provider.models.values.toList(),
+                    provider.models.values.sortedWith(
+                        compareBy<ModelEntry> { !io.github.oustery.opencodephone.core.model.OpenCodeCatalog.isFree(it) }
+                            .thenBy { it.name },
+                    ),
                     key = { "model:${provider.id.length}:${provider.id}:${it.id}" },
                 ) { model ->
                     ModelRow(
@@ -459,6 +462,9 @@ private fun ModelRow(model: ModelEntry, selected: Boolean, onClick: () -> Unit) 
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.weight(1f),
         )
+        if (io.github.oustery.opencodephone.core.model.OpenCodeCatalog.isFree(model)) {
+            OcStatusChip(text = stringResource(R.string.chat_model_free), tone = OcChipTone.NEUTRAL)
+        }
         if (selected) {
             OcStatusChip(text = stringResource(R.string.chat_model_selected), tone = OcChipTone.PRIMARY)
         }

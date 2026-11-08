@@ -126,11 +126,14 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
     private suspend fun loadProviders() {
         val providers = activeClient.listProviders()
         val selection = graph.settings.modelSelection()
+        val selected = io.github.oustery.opencodephone.core.model.OpenCodeCatalog.choose(
+            providers, selection.providerId, selection.modelId,
+        )
         _state.update {
             it.copy(
-                providers = providers.all,
+                providers = io.github.oustery.opencodephone.core.model.OpenCodeCatalog.providers(providers),
                 connectedProviders = providers.connected,
-                modelSelection = selection.takeIf { s -> s.providerId.isNotBlank() },
+                modelSelection = selected?.let { ModelSelection("opencode", it.id) },
             )
         }
     }
@@ -306,6 +309,10 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
         val sessionId = current.activeSessionId ?: return
         val text = current.draft.trim()
         if (text.isEmpty()) return
+        if (current.modelSelection == null) {
+            _state.update { it.copy(error = graph.appContext.getString(io.github.oustery.opencodephone.R.string.chat_models_empty)) }
+            return
+        }
         _state.update { it.copy(draft = "", busy = true) }
         val client = activeClient
         val ticket = endpointEpoch
@@ -362,6 +369,7 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
     }
 
     fun selectModel(providerId: String, modelId: String) {
+        if (providerId != "opencode" || _state.value.providers.none { it.id == providerId && modelId in it.models }) return
         val selection = ModelSelection(providerId, modelId)
         graph.settings.setModelSelection(selection)
         _state.update { it.copy(modelSelection = selection, showModels = false) }
