@@ -1,6 +1,7 @@
 package io.github.oustery.opencodephone.core.linuxenv
 
 import io.github.oustery.opencodephone.core.model.OcJson
+import io.github.oustery.opencodephone.core.opencode.consumeCancellable
 import io.github.oustery.opencodephone.core.model.Pins
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -28,7 +29,7 @@ class DockerRegistryClient(private val callFactory: Call.Factory) {
     private suspend fun pullToken(): String = withContext(Dispatchers.IO) {
         val url = "https://auth.docker.io/token?service=registry.docker.io" +
             "&scope=repository:${Pins.DOCKER_REPO}:pull"
-        callFactory.newCall(Request.Builder().url(url).build()).execute().use { resp ->
+        callFactory.newCall(Request.Builder().url(url).build()).consumeCancellable { resp ->
             check(resp.isSuccessful) { "Docker auth failed: HTTP ${resp.code}" }
             val body = resp.body?.string().orEmpty()
             val obj = json.parseToJsonElement(body).jsonObject
@@ -56,7 +57,7 @@ class DockerRegistryClient(private val callFactory: Call.Factory) {
                         "application/vnd.docker.distribution.manifest.v2+json",
                 )
                 .build(),
-        ).execute().use { resp ->
+        ).consumeCancellable { resp ->
             check(resp.isSuccessful) { "Manifest fetch failed: HTTP ${resp.code}" }
             val bytes = checkNotNull(resp.body) { "Empty manifest response" }.bytes()
             parseVerifiedManifest(bytes, digest)
@@ -91,7 +92,7 @@ class DockerRegistryClient(private val callFactory: Call.Factory) {
         dest.parentFile?.mkdirs()
         val md = MessageDigest.getInstance("SHA-256")
         var bytesRead = 0L
-        callFactory.newCall(registryRequest(url, token)).execute().use { resp ->
+        callFactory.newCall(registryRequest(url, token)).consumeCancellable { resp ->
             check(resp.isSuccessful) { "Blob download failed: HTTP ${resp.code}" }
             val source = resp.body?.byteStream() ?: error("Empty blob response")
             FileOutputStream(dest).use { out ->

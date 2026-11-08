@@ -11,6 +11,11 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -54,27 +59,55 @@ class BootstrapManager(
 
     private val dateFormat = SimpleDateFormat("HH:mm:ss", Locale.US)
 
+    private val commands = Channel<suspend () -> Unit>(Channel.UNLIMITED)
+
+    init {
+        scope.launch(Dispatchers.IO) {
+            for (command in commands) {
+                try { command() }
+                catch (e: CancellationException) { throw e }
+                catch (e: Exception) {
+                    _state.value = BootstrapState(phase = BootstrapPhase.FAILED, error = e.message)
+                }
+            }
+        }
+    }
+
     fun start(version: String = opencodeVersion) {
-        if (job?.isActive == true) return
-        opencodeVersion = version
-        job = scope.launch(Dispatchers.IO) { run() }
+        commands.trySend {
+            if (job?.isActive != true) {
+                opencodeVersion = version
+                job = scope.launch(Dispatchers.IO) { run() }
+            }
+        }.getOrThrow()
     }
 
     fun retry() {
-        job?.cancel()
-        job = null
-        _state.value = BootstrapState()
-        start()
+        commands.trySend {
+            job?.cancelAndJoin()
+            _state.value = BootstrapState()
+            job = scope.launch(Dispatchers.IO) { run() }
+        }.getOrThrow()
     }
 
-    /** Delete the whole environment (workspace is preserved). */
-    fun reset() {
-        job?.cancel()
-        job = null
-        runtime.stopServer()
-        layout.baseDir.deleteRecursively()
-        layout.installedStamp.delete()
-        _state.value = BootstrapState()
+    /** Ordered with start/retry; no old writer may survive deletion. */
+    suspend fun reset() {
+        val done = CompletableDeferred<Unit>()
+        commands.send {
+            try {
+                runtime.stopInteractive()
+                job?.cancelAndJoin()
+                job = null
+                runtime.stopServer()
+                check(!layout.baseDir.exists() || layout.baseDir.deleteRecursively())
+                _state.value = BootstrapState()
+                done.complete(Unit)
+            } catch (e: Exception) {
+                done.completeExceptionally(e)
+                throw e
+            }
+        }
+        done.await()
     }
 
     private fun setState(
@@ -83,6 +116,7 @@ class BootstrapManager(
         progress: Float? = null,
         message: String = "",
     ) {
+        if (phase == BootstrapPhase.READY) runtime.resumeInteractive()
         currentPhase = phase
         _state.update {
             it.copy(phase = phase, label = label, progress = progress, message = message)
@@ -151,7 +185,7 @@ class BootstrapManager(
             log("rootfs downloaded: ${archive.length() / (1024 * 1024)} MB")
 
             setState(BootstrapPhase.EXTRACTING_ROOTFS, "Extracting root filesystem")
-            RootfsExtractor.extract(archive, layout.rootfsDir)
+            RootfsExtractor.extract(archive, layout.rootfsDir, checkCancellation = currentCoroutineContext().let { ctx -> { ctx.ensureActive() } })
             archive.delete()
             log("rootfs extracted to ${layout.rootfsDir.absolutePath}")
 

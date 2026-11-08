@@ -85,6 +85,32 @@ class AppGraph(context: Application) {
     var client: OpenCodeClient = OpenCodeClient(config = buildClientConfig(settings))
         private set
 
+    private val credentialsLock = kotlinx.coroutines.sync.Mutex()
+    val credentialsRevision = MutableStateFlow(0L)
+    fun credentialsChanged() { credentialsRevision.value += 1 }
+
+    suspend fun syncProviderCredentials(target: OpenCodeClient) = withContext(Dispatchers.IO) {
+        credentialsLock.lock()
+        try {
+            val cfg = serverConfiguration.value
+            val expected = ConnectionConfig(if (cfg.mode == ServerMode.LOCAL) "127.0.0.1" else cfg.host,
+                cfg.port, cfg.username, cfg.password)
+            if (target.config != expected || !settings.providerSyncAllowed(cfg)) return@withContext
+            val keys = settings.providerKeys()
+            var managed = settings.managedProviders(cfg)
+            for (id in managed - keys.map { it.providerId }.toSet()) {
+                target.removeProviderAuth(id)
+                managed = managed - id
+                settings.recordManagedProviders(cfg, managed)
+            }
+            for (key in keys) {
+                settings.recordManagedProviders(cfg, managed + key.providerId)
+                managed = managed + key.providerId
+                target.setProviderAuth(key.providerId, target.apiCredentials(key.providerId, key.apiKey))
+            }
+        } finally { credentialsLock.unlock() }
+    }
+
     fun refreshClient() {
         client = OpenCodeClient(config = buildClientConfig(settings))
         _serverConfiguration.value = settings.effectiveServerConfig()

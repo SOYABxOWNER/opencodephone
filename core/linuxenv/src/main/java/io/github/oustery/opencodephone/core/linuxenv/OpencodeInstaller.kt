@@ -3,6 +3,7 @@ package io.github.oustery.opencodephone.core.linuxenv
 import io.github.oustery.opencodephone.core.model.OcJson
 import io.github.oustery.opencodephone.core.model.OcJson.optObject
 import io.github.oustery.opencodephone.core.model.OcJson.optString
+import io.github.oustery.opencodephone.core.opencode.consumeCancellable
 import io.github.oustery.opencodephone.core.model.Pins
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -53,7 +54,7 @@ class OpencodeInstaller(
     }
 
     private suspend fun get(url: String): String = withContext(Dispatchers.IO) {
-        callFactory.newCall(Request.Builder().url(url).build()).execute().use { resp ->
+        callFactory.newCall(Request.Builder().url(url).build()).consumeCancellable { resp ->
             check(resp.isSuccessful) { "HTTP ${resp.code} for $url" }
             resp.body?.string().orEmpty()
         }
@@ -68,7 +69,7 @@ class OpencodeInstaller(
         val md = MessageDigest.getInstance("SHA-512")
         var bytesRead = 0L
         var total = -1L
-        callFactory.newCall(Request.Builder().url(info.tarballUrl).build()).execute().use { resp ->
+        callFactory.newCall(Request.Builder().url(info.tarballUrl).build()).consumeCancellable { resp ->
             check(resp.isSuccessful) { "Tarball download failed: HTTP ${resp.code}" }
             val body = resp.body ?: error("Empty tarball response")
             total = body.contentLength()

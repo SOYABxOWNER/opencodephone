@@ -68,6 +68,7 @@ fun SettingsScreen(graph: AppGraph) {
             ) {
                 if (state.legacyPlaintextSettings) {
                     Text(stringResource(R.string.settings_legacy_plaintext), color = MaterialTheme.colorScheme.error)
+                    OutlinedButton(onClick = { vm.importLegacySettings() }) { Text(stringResource(R.string.settings_import_legacy)) }
                 }
                 // ---- Server ------------------------------------------------
                 OcSectionHeader(stringResource(R.string.settings_server_header))
@@ -98,7 +99,7 @@ fun SettingsScreen(graph: AppGraph) {
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(
-                                value = state.server.port.toString(),
+                                value = state.serverPortText,
                                 onValueChange = { vm.setPort(it) },
                                 label = { Text(stringResource(R.string.settings_server_port)) },
                                 singleLine = true,
@@ -129,6 +130,16 @@ fun SettingsScreen(graph: AppGraph) {
                             )
                         } else {
                             Text(stringResource(R.string.settings_local_auth), style = MaterialTheme.typography.bodySmall)
+                        }
+                        if (state.server.mode == ServerMode.REMOTE) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                androidx.compose.material3.Checkbox(checked = state.providerSyncAllowed, onCheckedChange = vm::setProviderSyncAllowed)
+                                Text(stringResource(R.string.settings_provider_consent), modifier = Modifier.weight(1f))
+                            }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = vm::applyServer) { Text(stringResource(R.string.action_apply)) }
+                            OutlinedButton(onClick = vm::cancelServerChanges) { Text(stringResource(R.string.action_cancel)) }
                         }
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(onClick = { vm.testConnection() }) {

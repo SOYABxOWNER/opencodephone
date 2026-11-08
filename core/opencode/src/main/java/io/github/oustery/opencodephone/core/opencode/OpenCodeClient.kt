@@ -115,7 +115,7 @@ class OpenCodeClient(
             .header("Accept", "application/json")
             .method(method, bodyStr?.toRequestBody(mediaType))
             .build()
-        transport(snapshot).newCall(request).execute().use { response: Response ->
+        transport(snapshot).newCall(request).consumeCancellable { response: Response ->
             val text = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
                 throw OpenCodeApiException(
@@ -177,7 +177,8 @@ class OpenCodeClient(
             object : EventSourceListener() {
                 override fun onEvent(eventSource: EventSource, id: String?, type: String?, data: String) {
                     try {
-                        trySend(json.decodeFromString(ServerEvent.serializer(), data))
+                        val result = trySend(json.decodeFromString(ServerEvent.serializer(), data))
+                        if (result.isFailure && !isClosedForSend) close(IllegalStateException("SSE buffer overflow"))
                     } catch (_: Exception) {
                         // Ignore unparsable events; the stream continues.
                     }
@@ -199,6 +200,13 @@ class OpenCodeClient(
         )
         awaitClose { source.cancel() }
     }
+
+    suspend fun sessionStatuses(): JsonObject =
+        executeParsed("GET", "/session/status", serializer = JsonObject.serializer())
+
+    suspend fun pendingPermissions(): List<io.github.oustery.opencodephone.core.model.PermissionRequest> =
+        executeParsed("GET", "/permission", serializer = ListSerializer(JsonElement.serializer()))
+            .mapNotNull { OcJson.permissionRequest(it) }
 
     // -------------------------------------------------------------- Sessions
 
@@ -283,6 +291,10 @@ class OpenCodeClient(
     /** Store provider credentials, e.g. `{"type":"api","key":"..."}`. */
     suspend fun setProviderAuth(providerId: String, credentials: JsonObject) {
         execute("PUT", "/auth/${q(providerId)}", credentials)
+    }
+
+    suspend fun removeProviderAuth(providerId: String) {
+        execute("DELETE", "/auth/${q(providerId)}")
     }
 
     suspend fun apiCredentials(providerId: String, apiKey: String): JsonObject = buildJsonObject {

@@ -40,6 +40,44 @@ class RootfsExtractorTest {
     }
 
     @Test
+    fun `traversal and sibling prefix entries are rejected`() {
+        val parent = tempDir("extract-boundary")
+        val dest = File(parent, "root").apply { mkdirs() }
+        val archive = File(parent, "bad.tar.gz")
+        tarGz(archive, mapOf("../root-other/escape" to "bad"))
+        org.junit.Assert.assertThrows(IllegalStateException::class.java) {
+            RootfsExtractor.extract(archive, dest)
+        }
+        assertFalse(File(parent, "root-other/escape").exists())
+    }
+
+    @Test
+    fun `relative dot absolute forward links resolve independently of archive order`() {
+        val dest = tempDir("extract-links")
+        val archive = File(tempDir("extract-links-src"), "links.tar.gz")
+        GZIPOutputStream(FileOutputStream(archive)).use { gz ->
+            TarArchiveOutputStream(gz).use { tar ->
+                fun link(path: String, target: String, type: Byte) {
+                    val entry = TarArchiveEntry(path, type)
+                    entry.linkName = target
+                    tar.putArchiveEntry(entry); tar.closeArchiveEntry()
+                }
+                link("usr/lib/dot", ".", org.apache.commons.compress.archivers.tar.TarConstants.LF_SYMLINK)
+                link("usr/lib/absolute", "/usr/bin/tool", org.apache.commons.compress.archivers.tar.TarConstants.LF_SYMLINK)
+                link("hard", "usr/bin/tool", org.apache.commons.compress.archivers.tar.TarConstants.LF_LINK)
+                val entry = TarArchiveEntry("usr/bin/tool")
+                entry.size = 4
+                tar.putArchiveEntry(entry); tar.write("data".toByteArray()); tar.closeArchiveEntry()
+            }
+        }
+        RootfsExtractor.extract(archive, dest)
+        assertEquals(File(dest, "usr/lib").canonicalFile, File(dest, "usr/lib/dot").canonicalFile)
+        assertEquals("data", File(dest, "usr/lib/absolute").readText())
+        assertEquals("data", File(dest, "hard").readText())
+        dest.deleteRecursively()
+    }
+
+    @Test
     fun `replace mode removes previous content`() {
         val dest = tempDir("extract-replace")
         File(dest, "stale").mkdirs()

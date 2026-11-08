@@ -47,14 +47,14 @@ class TerminalViewModel(private val graph: AppGraph) : ViewModel() {
         val run = ++generation
         shellJob = viewModelScope.launch(Dispatchers.IO) {
             try {
-                val proc = graph.runtime.process(
+                val proc = graph.runtime.startInteractive(graph.runtime.process(
                     // stdin is a pipe, not a PTY. Interactive bash tries
                     // tcsetpgrp() and emits the warnings seen on Android.
                     listOf("/bin/bash", "--noprofile", "--norc", "-s"),
                     env = mapOf("TERM" to "dumb", "PAGER" to "cat", "GIT_PAGER" to "cat"),
                     cwd = io.github.oustery.opencodephone.core.linuxenv.PRootCommand.WORKSPACE_MOUNT,
                     mergeOutput = true,
-                ).start()
+                ))
                 val accepted = synchronized(processGuard) {
                     if (run != generation) false else {
                         process = proc

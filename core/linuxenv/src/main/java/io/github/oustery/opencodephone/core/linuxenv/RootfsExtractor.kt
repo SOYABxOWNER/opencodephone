@@ -1,108 +1,77 @@
 package io.github.oustery.opencodephone.core.linuxenv
 
-import org.apache.commons.compress.archivers.tar.TarArchiveEntry
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
-import java.io.BufferedInputStream
 import java.io.File
-import java.io.FileInputStream
-import java.io.FileOutputStream
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.zip.GZIPInputStream
 
-/**
- * Extracts the Debian rootfs tarball with permission and symlink handling.
- */
+/** Guest absolute links are converted to rootfs-relative links, never host absolute paths. */
 object RootfsExtractor {
-
-    /**
-     * Extract a tar.gz rootfs archive into [destDir]. When [replace] is true
-     * any previous content is removed first; when false the archive is
-     * merged into the existing tree (used for the toolset overlay).
-     * Symlinks are recreated (with a copy fallback); executable bits
-     * from the tar mode are preserved.
-     */
-    fun extract(tarGz: File, destDir: File, replace: Boolean = true) {
-        check(tarGz.exists()) { "Archive not found: $tarGz" }
-        if (replace && destDir.exists()) {
-            destDir.deleteRecursively()
+    fun extract(tarGz: File, destDir: File, replace: Boolean = true, checkCancellation: () -> Unit = {}) {
+        check(tarGz.isFile)
+        if (replace && destDir.exists()) check(destDir.deleteRecursively())
+        check(destDir.mkdirs() || destDir.isDirectory)
+        val root = destDir.canonicalFile.toPath()
+        val hardlinks = mutableListOf<Pair<Path, Path>>()
+        fun within(path: Path): Path {
+            val normalized = path.normalize()
+            check(normalized.startsWith(root)) { "Archive path escapes rootfs" }
+            check(normalized.toFile().canonicalFile.toPath().startsWith(root)) { "Archive link escapes rootfs" }
+            return normalized
         }
-        destDir.mkdirs()
-        val destRoot = destDir.canonicalPath
-
-        TarArchiveInputStream(
-            GZIPInputStream(BufferedInputStream(FileInputStream(tarGz)), 128 * 1024),
-        ).use { tar ->
-            while (true) {
-                val entry: TarArchiveEntry = tar.nextTarEntry ?: break
-                val target = File(destDir, entry.name)
-                // Path traversal guard: canonical target must stay inside destDir.
-                if (!target.canonicalPath.startsWith(destRoot)) continue
-
-                when {
-                    entry.isDirectory -> target.mkdirs()
-
-                    entry.isSymbolicLink -> {
-                        target.parentFile?.mkdirs()
-                        if (target.exists() || Files.isSymbolicLink(target.toPath())) {
-                            // Overlay mode: a later package may legitimately
-                            // replace an earlier symlink or file.
-                            target.delete()
-                        }
-                        createSymlink(target, entry.linkName, destDir)
+        GZIPInputStream(tarGz.inputStream().buffered(), 128 * 1024).use { gzip ->
+            TarArchiveInputStream(gzip).use { tar ->
+                while (true) {
+                    checkCancellation()
+                    val entry = tar.nextTarEntry ?: break
+                    val target = root.resolve(entry.name.trimStart('/')).normalize()
+                    check(target.startsWith(root)) { "Archive entry escapes rootfs" }
+                    val parent = target.parent
+                    if (target != root) {
+                        within(parent)
+                        Files.createDirectories(parent)
                     }
-
-                    entry.isLink -> {
-                        target.parentFile?.mkdirs()
-                        val linkTarget = resolveWithin(destDir, entry.linkName)
-                        if (linkTarget != null && linkTarget.exists()) {
-                            linkTarget.copyTo(target, overwrite = true)
+                    when {
+                        entry.isSymbolicLink -> {
+                            val physicalParent = parent.toFile().canonicalFile.toPath()
+                            val desired = if (entry.linkName.startsWith('/')) root.resolve(entry.linkName.trimStart('/'))
+                                else physicalParent.resolve(entry.linkName)
+                            within(desired)
+                            Files.deleteIfExists(target)
+                            Files.createSymbolicLink(target, physicalParent.relativize(desired.normalize()))
                         }
-                    }
-
-                    else -> {
-                        target.parentFile?.mkdirs()
-                        FileOutputStream(target).use { tar.copyTo(it) }
-                        applyMode(target, entry.mode)
+                        entry.isLink -> {
+                            within(target)
+                            hardlinks += target to within(root.resolve(entry.linkName.trimStart('/')))
+                        }
+                        entry.isDirectory -> Files.createDirectories(within(target))
+                        entry.isFile -> {
+                            within(target)
+                            Files.newOutputStream(target).use { out ->
+                                val bytes = ByteArray(64 * 1024)
+                                while (true) {
+                                    checkCancellation()
+                                    val n = tar.read(bytes)
+                                    if (n < 0) break
+                                    out.write(bytes, 0, n)
+                                }
+                            }
+                            if (entry.mode and 64 != 0) check(target.toFile().setExecutable(true, false))
+                        }
+                        // Device nodes and other special archive entries are not materialized app-side.
                     }
                 }
             }
         }
-    }
-
-    private fun createSymlink(target: File, linkName: String, destDir: File) {
-        try {
-            Files.deleteIfExists(target.toPath())
-            val linkPath: Path = target.toPath()
-            val targetPath: Path = resolveWithin(destDir, linkName)?.toPath() ?: Path.of(linkName)
-            Files.createSymbolicLink(linkPath, targetPath)
-        } catch (_: Exception) {
-            // Fallback: materialize the link target as a copy when symlinks are
-            // unavailable on this filesystem.
-            resolveWithin(destDir, linkName)?.let { src ->
-                if (src.isDirectory) {
-                    target.mkdirs()
-                } else if (src.exists()) {
-                    src.copyTo(target, overwrite = true)
-                }
+        while (hardlinks.isNotEmpty()) {
+            checkCancellation()
+            val ready = hardlinks.filter { within(it.second).toFile().isFile }
+            check(ready.isNotEmpty()) { "Unresolved archive hardlink" }
+            ready.forEach { (target, source) ->
+                within(source).toFile().copyTo(within(target).toFile(), overwrite = true)
             }
-        }
-    }
-
-    /** Resolve a (possibly relative) link target within the rootfs. */
-    private fun resolveWithin(destDir: File, linkName: String): File? {
-        val target = if (linkName.startsWith("/")) {
-            File(destDir, linkName)
-        } else {
-            null
-        } ?: File(destDir, linkName)
-        return if (target.exists()) target.canonicalFile else null
-    }
-
-    private fun applyMode(file: File, mode: Int) {
-        // user execute bit (0o100) — also covers directories created as files
-        if (mode and 0b001_000_000 != 0) {
-            file.setExecutable(true, false)
+            hardlinks.removeAll(ready.toSet())
         }
     }
 }

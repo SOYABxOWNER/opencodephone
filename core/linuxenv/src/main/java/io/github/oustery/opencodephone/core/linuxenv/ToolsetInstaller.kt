@@ -1,6 +1,9 @@
 package io.github.oustery.opencodephone.core.linuxenv
 
+import io.github.oustery.opencodephone.core.opencode.consumeCancellable
 import io.github.oustery.opencodephone.core.model.Pins
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Call
@@ -36,7 +39,7 @@ class ToolsetInstaller(private val callFactory: Call.Factory) {
         val archive = File(layout.downloadDir, "toolset-$arch.tar.gz")
 
         val sha = MessageDigest.getInstance("SHA-256")
-        callFactory.newCall(Request.Builder().url(url).build()).execute().use { resp ->
+        callFactory.newCall(Request.Builder().url(url).build()).consumeCancellable { resp ->
             check(resp.isSuccessful) { "Toolset download failed: HTTP ${resp.code} for $url" }
             val body = resp.body ?: error("Toolset download: empty body")
             val total = body.contentLength()
@@ -58,7 +61,7 @@ class ToolsetInstaller(private val callFactory: Call.Factory) {
             "Toolset checksum mismatch: expected $digest, got $got ($url)"
         }
 
-        RootfsExtractor.extract(archive, layout.rootfsDir, replace = false)
+        RootfsExtractor.extract(archive, layout.rootfsDir, replace = false, checkCancellation = currentCoroutineContext().let { ctx -> { ctx.ensureActive() } })
         archive.delete()
 
         mergeDpkgStatus(layout.rootfsDir)

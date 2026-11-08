@@ -37,7 +37,7 @@ data class ModelSelection(
  * Fails closed if Keystore cannot be opened. Startup offers retry without
  * deleting settings; credentials are never written to a plaintext fallback.
  */
-class SettingsStore(context: Context) {
+class SettingsStore(private val context: Context) {
 
     private val prefs: SharedPreferences = openSecureSettings {
         val masterKey = MasterKey.Builder(context)
@@ -53,9 +53,40 @@ class SettingsStore(context: Context) {
     }
 
     // Detect legacy data without loading it or silently preferring stale plaintext values.
-    val hasLegacyPlaintextSettings: Boolean = java.io.File(
+    val hasLegacyPlaintextSettings: Boolean get() = java.io.File(
         context.applicationInfo.dataDir, "shared_prefs/opencodephone_fallback.xml",
     ).exists()
+
+    /** Explicit, user-confirmed import. Existing secure values win; secrets are never exported. */
+    fun importLegacySettings() {
+        val old = context.getSharedPreferences("opencodephone_fallback", Context.MODE_PRIVATE)
+        val allowed = setOf(KEY_SERVER_MODE, KEY_SERVER_HOST, KEY_SERVER_PORT, KEY_SERVER_USERNAME,
+            KEY_SERVER_PASSWORD, KEY_PROVIDER_KEYS, KEY_MODEL_PROVIDER, KEY_MODEL_ID,
+            KEY_GIT_NAME, KEY_GIT_EMAIL, KEY_GIT_TOKEN, KEY_OPENCODE_PIN)
+        val editor = prefs.edit()
+        for ((key, value) in old.all) if (key in allowed && !prefs.contains(key)) {
+            when (value) {
+                is String -> editor.putString(key, value)
+                is Int -> editor.putInt(key, value)
+            }
+        }
+        check(editor.commit()) { "Secure import failed; legacy settings retained" }
+        check(old.edit().clear().commit()) { "Secure import saved; legacy cleanup must be retried" }
+        check(context.deleteSharedPreferences("opencodephone_fallback")) { "Legacy cleanup must be retried" }
+    }
+
+    private fun endpoint(config: ServerConfig): String = if (config.mode == ServerMode.LOCAL) "local"
+        else "https:${config.host.lowercase()}:${config.port}:${config.username}"
+    fun providerSyncAllowed(config: ServerConfig): Boolean = config.mode == ServerMode.LOCAL ||
+        prefs.getBoolean("consent:${endpoint(config)}", false)
+    fun setProviderSyncAllowed(config: ServerConfig, allowed: Boolean) = edit {
+        it.putBoolean("consent:${endpoint(config)}", allowed)
+    }
+    fun managedProviders(config: ServerConfig): Set<String> =
+        prefs.getStringSet("managed:${endpoint(config)}", emptySet())?.toSet() ?: emptySet()
+    fun recordManagedProviders(config: ServerConfig, providers: Set<String>) {
+        check(prefs.edit().putStringSet("managed:${endpoint(config)}", providers).commit())
+    }
 
     private val localSecret = PersistentLocalSecret(
         read = { prefs.getString(KEY_LOCAL_SERVER_SECRET, null) },

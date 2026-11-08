@@ -83,8 +83,9 @@ android {
         // Not distributed through Play Store, so Play's targetSdk floor does
         // not apply; lint would still abort the release build on the pinned
         // targetSdk 28 (ExpiredTargetSdkVersion), so vital checks are off.
-        checkReleaseBuilds = false
-        abortOnError = false
+        checkReleaseBuilds = true
+        abortOnError = true
+        disable += "ExpiredTargetSdkVersion"
     }
 }
 
@@ -119,3 +120,11 @@ dependencies {
 
     debugImplementation(libs.compose.ui.tooling)
 }
+
+// Keep verification part of the existing Gradle entrypoint, without editing workflows.
+val nativeRegressions by tasks.registering(Exec::class) {
+    group = "verification"
+    workingDir(rootProject.projectDir)
+    commandLine("python3", rootProject.file("tools/test_proot_seccomp.py").absolutePath)
+}
+tasks.matching { it.name == "test" }.configureEach { dependsOn("lintDebug", nativeRegressions) }
