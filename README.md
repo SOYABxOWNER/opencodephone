@@ -262,3 +262,16 @@ configuration changes, chat reconnects and environment reinstall. Start explicit
 re-enables it. A new app process restores the existing autostart default. This does
 not delete the environment/projects or terminate terminal sessions. Remote servers
 are never stopped by these controls.
+
+### OpenCode-first model catalog
+
+Chat lists only the connected `opencode` provider reported by the server, not the
+full third-party `/provider` catalog. Available standard and free models come
+from the live server: no model IDs or permanent free offerings are hardcoded.
+A valid saved OpenCode selection is kept; otherwise a zero-input/output-cost
+model is preferred, then the server's OpenCode default. Unknown prices are never
+labelled free. Free public models need no user-entered provider key; OpenCode
+still controls availability, usage limits and billing of other models. If OpenCode
+is disabled/unavailable, the app reports that instead of silently sending prompts
+to a third-party/default provider. Custom provider credentials in Settings are
+retained for compatibility, but do not populate the primary chat catalog.

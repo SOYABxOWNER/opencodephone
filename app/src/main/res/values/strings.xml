@@ -53,8 +53,8 @@
     <string name="chat_session_untitled">Untitled session</string>
     <string name="chat_new_session">New session</string>
     <string name="chat_models_title">Models</string>
-    <string name="chat_models_hint">Providers need an API key in Settings before they can be used.</string>
-    <string name="chat_models_empty">No providers reported by the server yet.</string>
+    <string name="chat_models_hint">OpenCode models available on this server. Free models do not require your own provider API key; availability and limits are managed by OpenCode.</string>
+    <string name="chat_models_empty">No available OpenCode models. Check the server network and OpenCode provider configuration, then reconnect.</string>
     <string name="chat_provider_connected">connected</string>
     <string name="chat_provider_no_key">no key</string>
     <string name="chat_model_selected">selected</string>
@@ -149,4 +149,5 @@
     <string name="update_check">Check for updates</string>
     <string name="update_download">Download update</string>
     <string name="update_install">Install update</string>
+    <string name="chat_model_free">Free</string>
 </resources>

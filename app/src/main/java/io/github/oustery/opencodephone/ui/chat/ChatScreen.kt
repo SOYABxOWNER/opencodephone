@@ -459,6 +459,9 @@ private fun ModelRow(model: ModelEntry, selected: Boolean, onClick: () -> Unit) 
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.weight(1f),
         )
+        if (io.github.oustery.opencodephone.core.model.OpenCodeCatalog.isFree(model)) {
+            OcStatusChip(text = stringResource(R.string.chat_model_free), tone = OcChipTone.NEUTRAL)
+        }
         if (selected) {
             OcStatusChip(text = stringResource(R.string.chat_model_selected), tone = OcChipTone.PRIMARY)
         }

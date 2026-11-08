@@ -56,10 +56,14 @@ data class SessionStatus(
 )
 
 @Serializable
+data class ModelCost(val input: Double? = null, val output: Double? = null)
+
+@Serializable
 data class ModelEntry(
     val id: String,
     val name: String = id,
     @SerialName("contextWindow") val contextWindow: Long? = null,
+    val cost: ModelCost? = null,
 )
 
 @Serializable
@@ -72,6 +76,7 @@ data class ProviderEntry(
 
 @Serializable
 data class ProviderListResponse(
+    val default: Map<String, String> = emptyMap(),
     val all: List<ProviderEntry> = emptyList(),
     val connected: List<String> = emptyList(),
 )
