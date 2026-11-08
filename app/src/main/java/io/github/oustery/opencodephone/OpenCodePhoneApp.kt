@@ -45,10 +45,11 @@ class AppGraph(context: Application) {
     private val _serverConfiguration = MutableStateFlow(settings.effectiveServerConfig())
     val serverConfiguration: StateFlow<ServerConfig> = _serverConfiguration
 
-    val localServerEnabled = MutableStateFlow(true)
+    private val _localServerEnabled = MutableStateFlow(true)
+    val localServerEnabled: StateFlow<Boolean> = _localServerEnabled
 
-    fun stopLocalServer() { localServerEnabled.value = false }
-    fun startLocalServer() { localServerEnabled.value = true }
+    fun stopLocalServer() { _localServerEnabled.value = false }
+    fun startLocalServer() { _localServerEnabled.value = true }
 
     init {
         appScope.launch {
