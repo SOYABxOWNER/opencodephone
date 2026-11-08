@@ -99,7 +99,7 @@ fun OcEmptyState(
     onAction: (() -> Unit)? = null,
 ) {
     Column(
-        modifier = modifier.verticalScroll(rememberScrollState()).padding(32.dp),
+        modifier = modifier.padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {

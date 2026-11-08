@@ -275,3 +275,14 @@ still controls availability, usage limits and billing of other models. If OpenCo
 is disabled/unavailable, the app reports that instead of silently sending prompts
 to a third-party/default provider. Custom provider credentials in Settings are
 retained for compatibility, but do not populate the primary chat catalog.
+
+### UI regression controls
+
+The [M3 Expressive remediation tracker](docs/reviews/m3-expressive-remediation.md)
+links E-001–E-016 to implementation and remaining device checks. The shared
+component gallery has light/dark, large-font and expanded previews. Native
+Robolectric render/semantics probes live in `core/designsystem/src/test` and
+export PNGs to `build/reports/ui-renders` in that module. They verify selected
+color, action, disclosure and large-type invariants, not a complete full-screen
+golden baseline. `python3 tools/check_ui_policy.py` rejects M2 imports and
+screen-level hex colors/font sizes; it is required by the Gradle test lifecycle.

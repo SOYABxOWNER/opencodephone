@@ -1,6 +1,8 @@
 package io.github.oustery.opencodephone.ui.chat
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -107,14 +109,14 @@ fun ChatScreen(graph: AppGraph, onOpenSettings: () -> Unit) {
             ChatConnection.DISCONNECTED -> OcEmptyState(
                 title = stringResource(R.string.chat_offline_title),
                 description = stringResource(R.string.chat_offline_body),
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
                 actionText = stringResource(R.string.chat_offline_settings),
                 onAction = onOpenSettings,
             )
             ChatConnection.ERROR -> OcEmptyState(
                 title = stringResource(R.string.chat_error_title),
                 description = state.error ?: "",
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
                 actionText = stringResource(R.string.chat_offline_settings),
                 onAction = onOpenSettings,
             )
@@ -280,6 +282,8 @@ private fun ChatInput(vm: ChatViewModel, state: ChatUiState) {
 @Composable
 private fun MessageBubble(message: UiMessage, onCopy: (String) -> Unit) {
     val isUser = message.role == "user"
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+    val bubbleWidth = (maxWidth * 0.9f).coerceAtMost(560.dp)
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
@@ -288,13 +292,14 @@ private fun MessageBubble(message: UiMessage, onCopy: (String) -> Unit) {
             shape = if (isUser) AppMessageShapes.outgoing else AppMessageShapes.incoming,
             color = if (isUser) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
             contentColor = if (isUser) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.widthIn(max = 320.dp),
+            modifier = Modifier.widthIn(max = bubbleWidth),
         ) {
             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 message.parts.forEach { part -> PartView(part, onCopy) }
             }
         }
     }
+}
 }
 
 @Composable

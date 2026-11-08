@@ -159,4 +159,9 @@ val nativeRegressions by tasks.registering(Exec::class) {
     workingDir(rootProject.projectDir)
     commandLine("python3", rootProject.file("tools/test_proot_seccomp.py").absolutePath)
 }
-tasks.matching { it.name == "test" }.configureEach { dependsOn("lintDebug", "assembleRelease", nativeRegressions) }
+val uiPolicy by tasks.registering(Exec::class) {
+    group = "verification"
+    workingDir(rootProject.projectDir)
+    commandLine("python3", rootProject.file("tools/check_ui_policy.py").absolutePath)
+}
+tasks.matching { it.name == "test" }.configureEach { dependsOn("lintDebug", "assembleRelease", nativeRegressions, uiPolicy) }

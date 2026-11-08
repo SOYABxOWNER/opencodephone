@@ -308,7 +308,8 @@ private fun EditorDialog(
                 shape = if (compact) androidx.compose.ui.graphics.RectangleShape else MaterialTheme.shapes.large,
             ) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(fileName, style = MaterialTheme.typography.titleLarge)
+                    Text(fileName, style = MaterialTheme.typography.titleMedium, maxLines = 2,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                     OutlinedTextField(
                         value = content, onValueChange = onContentChange,
                         modifier = Modifier.fillMaxWidth().weight(1f),
