@@ -11,8 +11,9 @@ suspend fun observeServerLifecycle(
     configuration: Flow<ServerLaunchConfig?>,
     start: suspend (ServerLaunchConfig) -> Unit,
     stop: suspend () -> Unit,
+    enabled: Flow<Boolean> = kotlinx.coroutines.flow.flowOf(true),
 ) {
-    combine(ready, configuration) { installed, cfg -> if (installed) cfg else null }
+    combine(ready, configuration, enabled) { installed, cfg, running -> if (installed && running) cfg else null }
         .distinctUntilChanged()
         .collectLatest { cfg ->
             if (cfg == null) stop() else start(cfg)

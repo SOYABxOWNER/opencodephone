@@ -134,4 +134,19 @@
     <string name="action_apply">Apply</string>
     <string name="startup_reset">Reset encrypted settings</string>
     <string name="startup_reset_warning">Permanently delete encrypted settings and their Keystore key? Provider keys, Git token, connection settings and local server secret will be lost. Projects and the Linux environment are preserved. Legacy plaintext settings are not deleted. Rotate any previously exposed keys. Retry first if the Keystore may be temporarily unavailable.</string>
+    <string name="settings_server_stop">Stop server</string>
+    <string name="settings_server_start">Start server</string>
+    <string name="settings_server_stop_note">Manual stop disables local autostart until Start is pressed or the app process restarts. Remote servers are not stopped.</string>
+    <string name="update_title">App updates</string>
+    <string name="update_installed">Installed: %1$s</string>
+    <string name="update_note">Checks stable GitHub Releases on request. Downloads the APK for this device; Android asks for installation confirmation.</string>
+    <string name="update_checking">Checking GitHub…</string>
+    <string name="update_current">No newer stable release.</string>
+    <string name="update_available">Version %1$s is available.</string>
+    <string name="update_downloading">Downloading %1$s: %2$d%%</string>
+    <string name="update_ready">Version %1$s verified. If asked, allow installation from this app, return here and press Install again.</string>
+    <string name="update_error">Update failed: check the network and compatible release APK. Installation requires a newer version code and the same signing certificate (debug builds cannot install release updates).</string>
+    <string name="update_check">Check for updates</string>
+    <string name="update_download">Download update</string>
+    <string name="update_install">Install update</string>
 </resources>

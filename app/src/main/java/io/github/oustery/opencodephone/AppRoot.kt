@@ -85,7 +85,8 @@ fun AppRoot(graph: AppGraph) {
             bootstrapState.phase == BootstrapPhase.READY &&
                 serverConfiguration.mode == io.github.oustery.opencodephone.core.settings.ServerMode.REMOTE -> EnvService.stop(context)
             serverState is ServerState.Starting || serverState is ServerState.Running -> EnvService.start(context)
-            bootstrapState.phase == BootstrapPhase.FAILED || serverState is ServerState.Failed -> EnvService.stop(context)
+            bootstrapState.phase == BootstrapPhase.FAILED || serverState is ServerState.Failed ||
+                (bootstrapState.phase == BootstrapPhase.READY && serverState is ServerState.Stopped) -> EnvService.stop(context)
             bootstrapState.phase != BootstrapPhase.READY -> EnvService.start(context)
         }
     }

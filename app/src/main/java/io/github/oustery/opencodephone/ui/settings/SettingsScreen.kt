@@ -56,6 +56,7 @@ private val KNOWN_PROVIDERS = listOf(
 fun SettingsScreen(graph: AppGraph) {
     val vm: SettingsViewModel = viewModel(factory = VmFactory.of { SettingsViewModel(graph) })
     val state by vm.state.collectAsStateWithLifecycle()
+    val serverEnabled by graph.localServerEnabled.collectAsStateWithLifecycle()
 
     Column(modifier = Modifier.fillMaxSize()) {
         ScreenHeader(title = stringResource(R.string.tab_settings))
@@ -151,6 +152,14 @@ fun SettingsScreen(graph: AppGraph) {
                             )
                         }
                         if (state.server.mode == ServerMode.LOCAL) {
+                            OutlinedButton(
+                                onClick = { if (serverEnabled) graph.stopLocalServer() else graph.startLocalServer() },
+                                enabled = !state.serverDirty && state.bootstrap.phase == io.github.oustery.opencodephone.core.model.BootstrapPhase.READY,
+                            ) {
+                                Text(stringResource(if (serverEnabled) R.string.settings_server_stop else R.string.settings_server_start))
+                            }
+                            Text(stringResource(R.string.settings_server_stop_note), style = MaterialTheme.typography.bodySmall)
+
                             OutlinedButton(
                                 onClick = { vm.restartServer() },
                                 enabled = !state.serverDirty && state.bootstrap.phase == io.github.oustery.opencodephone.core.model.BootstrapPhase.READY,
@@ -295,6 +304,7 @@ fun SettingsScreen(graph: AppGraph) {
                         )
                     }
                 }
+                io.github.oustery.opencodephone.ui.update.AppUpdateCard()
                 Spacer(Modifier.height(32.dp))
             }
         }
