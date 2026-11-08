@@ -189,19 +189,19 @@ class SettingsStore(private val context: Context) {
             keys.deleteEntry(MasterKey.DEFAULT_MASTER_KEY_ALIAS)
         }
 
-        const val KEY_LOCAL_SERVER_SECRET = "local_server_secret"
-        const val KEY_SERVER_MODE = "server_mode"
-        const val KEY_SERVER_HOST = "server_host"
-        const val KEY_SERVER_PORT = "server_port"
-        const val KEY_SERVER_USERNAME = "server_username"
-        const val KEY_SERVER_PASSWORD = "server_password"
-        const val KEY_PROVIDER_KEYS = "provider_keys"
-        const val KEY_MODEL_PROVIDER = "model_provider"
-        const val KEY_MODEL_ID = "model_id"
-        const val KEY_GIT_NAME = "git_user_name"
-        const val KEY_GIT_EMAIL = "git_user_email"
-        const val KEY_GIT_TOKEN = "git_github_token"
-        const val KEY_OPENCODE_PIN = "opencode_version_pin"
-        const val KEY_BOOTSTRAP_DONE = "bootstrap_completed"
+        private const val KEY_LOCAL_SERVER_SECRET = "local_server_secret"
+        private const val KEY_SERVER_MODE = "server_mode"
+        private const val KEY_SERVER_HOST = "server_host"
+        private const val KEY_SERVER_PORT = "server_port"
+        private const val KEY_SERVER_USERNAME = "server_username"
+        private const val KEY_SERVER_PASSWORD = "server_password"
+        private const val KEY_PROVIDER_KEYS = "provider_keys"
+        private const val KEY_MODEL_PROVIDER = "model_provider"
+        private const val KEY_MODEL_ID = "model_id"
+        private const val KEY_GIT_NAME = "git_user_name"
+        private const val KEY_GIT_EMAIL = "git_user_email"
+        private const val KEY_GIT_TOKEN = "git_github_token"
+        private const val KEY_OPENCODE_PIN = "opencode_version_pin"
+        private const val KEY_BOOTSTRAP_DONE = "bootstrap_completed"
     }
 }

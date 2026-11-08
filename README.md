@@ -150,24 +150,29 @@ Version pins live in `gradle/libs.versions.toml` and
 - Provider API keys and the GitHub token are stored in
   `EncryptedSharedPreferences` (Android Keystore); keys are injected into the
   selected opencode server on connect. A remote server receives those provider
-  keys, so it must be trusted. Existing Git PAT-in-URL behavior remains tracked
-  as F-002; encrypted settings do not protect copies in a repository config.
+  keys only with explicit endpoint/account-specific consent, so it must be trusted.
+  Git uses a child-environment credential helper restricted to HTTPS github.com;
+  stored remote/push URLs are sanitized when a project is accessed. Rotate old
+  exposed tokens; removing a URL does not remove copies from backups/history.
 - The local server is bound to `127.0.0.1` and requires an automatically generated
   256-bit secret stored in encrypted settings, separate from remote credentials.
   The app and its health probe use the same stable local secret.
 - If secure settings cannot be opened, startup shows a retry screen without
   deleting data or falling back to plaintext. Old plaintext settings are not
   automatically read/imported/deleted; Settings warns if the legacy file exists.
-  Retry may resolve a temporarily unavailable Keystore, not permanently lost keys.
+  Retry may resolve a temporarily unavailable Keystore. Explicit confirmed reset
+  deletes encrypted settings and their key, preserving projects/rootfs; lost keys
+  cannot be recovered. Settings offers an explicit legacy import/cleanup action.
 - Non-loopback remote hosts use **HTTPS with certificate validation**. Enter a
   bare hostname/IP in Settings and set the TLS listener's port (usually 443).
   Put a plain OpenCode V1 server behind a trusted HTTPS reverse proxy that also
   forwards SSE, or use an authenticated encrypted tunnel terminating on the
   phone's localhost. HTTP is allowed only for explicit loopback hosts, never as
   a fallback after a failed TLS connection. Redirects are not followed.
-- Stored provider keys are still synchronized to the selected server on chat
-  connection. Only connect to a server you trust with those keys; endpoint-scoped
-  credential consent is pending (see the remediation tracker).
+- Provider synchronization is endpoint/account-scoped. Only provider credentials
+  previously managed by this app are deleted after local removal; independently
+  configured server credentials are not removed. See the [remediation tracker](docs/reviews/remediation-progress.md)
+  for regression coverage and remaining device-validation limits.
 - No secrets are ever committed; CI release signing uses repository Secrets.
 
 ## Limitations (v0.1, honest)

@@ -82,7 +82,7 @@ android {
     lint {
         // Not distributed through Play Store, so Play's targetSdk floor does
         // not apply; lint would still abort the release build on the pinned
-        // targetSdk 28 (ExpiredTargetSdkVersion), so vital checks are off.
+        // targetSdk 28. Only that intentional policy exception is suppressed.
         checkReleaseBuilds = true
         abortOnError = true
         disable += "ExpiredTargetSdkVersion"
@@ -127,4 +127,4 @@ val nativeRegressions by tasks.registering(Exec::class) {
     workingDir(rootProject.projectDir)
     commandLine("python3", rootProject.file("tools/test_proot_seccomp.py").absolutePath)
 }
-tasks.matching { it.name == "test" }.configureEach { dependsOn("lintDebug", nativeRegressions) }
+tasks.matching { it.name == "test" }.configureEach { dependsOn("lintDebug", "assembleRelease", nativeRegressions) }

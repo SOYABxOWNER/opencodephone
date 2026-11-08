@@ -111,7 +111,11 @@ class SettingsViewModel(private val graph: AppGraph) : ViewModel() {
                 settings.setProviderSyncAllowed(cfg, state.providerSyncAllowed)
                 graph.refreshClient()
                 graph.credentialsChanged()
-                _state.update { it.copy(serverDirty = it.server != state.server || it.serverPortText != state.serverPortText || it.providerSyncAllowed != state.providerSyncAllowed, server = cfg, connectionTest = "Applied") }
+                _state.update {
+                    val changed = it.server != state.server || it.serverPortText != state.serverPortText ||
+                        it.providerSyncAllowed != state.providerSyncAllowed
+                    it.copy(serverDirty = changed, server = if (changed) it.server else cfg, connectionTest = "Applied")
+                }
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
             catch (e: Exception) { _state.update { it.copy(connectionTest = e.message) } }
         }

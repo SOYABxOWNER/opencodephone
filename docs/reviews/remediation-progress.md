@@ -1,71 +1,49 @@
 # Remediation tracker
 
-Reference: [2026-11-08 audit](2026-11-08-kotlin-audit.md). That document is a
-historical snapshot, not a list of changes already implemented.
+Reference: [2026-11-08 audit](2026-11-08-kotlin-audit.md), retained as a historical
+snapshot. PR #5 implements the changes below; “implemented” does not mean that
+all Android/device integration scenarios have been verified.
 
-## Batch 1 — transport, process ownership and small UI fixes
+Batches: `56a0713` transport/generation/digest/UI; `9308b1d` local auth,
+fail-closed storage and refresh scheduling; `45f2f8a` cancellation, filesystem,
+Git, credentials, session ownership and settings; subsequent fixes include dot
+symlinks, cancellation-safe remote migration and confirmed storage recovery.
 
-| Finding | Status | Delivered / remaining |
-|---|---|---|
-| F-001 | Partial | Non-loopback hosts default to HTTPS; explicit remote HTTP is rejected. REST and SSE share the policy, certificate verification is unchanged, redirects (including cross-origin HTTPS and HTTP downgrade) are disabled. Requests capture one connection snapshot. Endpoint-specific consent before syncing stored provider keys is **not yet implemented**. |
-| F-008 | Implemented with regression tests | Start/stop use a generation ticket; a late child is terminated instead of published. Late launch errors cannot replace Stopped. Cancellation immediately after launch is checked before readiness. |
-| F-019 | Implemented with regression tests | The original manifest response bytes must match the pinned SHA-256 before parsing. HTTP-path tests cover a valid pin and substituted valid JSON. |
-| F-020 | Open (permission blocked) | Adding native tests to CI was rejected by GitHub because the Arena app lacks `workflows` permission. The workflow is unchanged; the ready-to-apply step is below. Blocking lint, app/device tests and release/R8 checks remain open. |
-| F-021 | Implemented, device verification pending | Password, PAT and API-key inputs are masked and use password keyboard semantics. A reveal toggle can be added separately. |
-| F-022 | Implemented, device verification pending | All models are selectable; provider headers and model rows are individual lazy items rather than eagerly composing an entire provider catalog. |
+| Finding | Implementation and validation limits |
+|---|---|
+| F-001 | Non-loopback HTTPS, certificate validation, no redirects/downgrade; REST/SSE connection snapshots. Provider sync requires endpoint/account-specific remote consent. TLS/redirect helper regression tests; consent UI/device scenarios not instrumented. |
+| F-002 | Git HTTPS URLs exclude userinfo/query/fragment; token only in child environment, helper restricted to HTTPS github.com[:443], helper chain reset, TLS required, redirects/hooks disabled. Existing remote/push URL userinfo removed on project access. Migration remove/repopulate cannot be interrupted by coroutine cancellation; each process is time-bounded. JVM helper/config tests use a fake token. Old backups require token rotation. |
+| F-003 | Stable encrypted 256-bit local secret shared by launcher/client/probe. Blank-password launch rejected; persistence/concurrency/mode regression tests. Independent APK anonymous-401 test remains device work. |
+| F-004 | No plaintext fallback; async Loading/Failed/Ready with retry. Explicit allowlisted legacy import commits secure values before cleanup; existing secure values win. Confirmed destructive secure reset preserves rootfs/projects and warns about credential loss. Permanent loss is not recoverable; device Keystore failure injection remains unverified. |
+| F-005 | Component/canonical archive containment, guest-absolute links converted relative, dot/relative links and deferred hardlinks, cancellation during copy. Archive traversal/link/order/merge regressions. |
+| F-006 | Bootstrap actor serializes start/retry/reset and cancels/joins old work before replacement/deletion. Interactive processes registered and stopped before reset. Full Android lifecycle/reset race tests remain unimplemented. |
+| F-007 | Bounded process output, cancellable wait, timeout/kill/reap/stream cleanup; HTTP cancellation cancels underlying call through body consumption; archive copy checks cancellation. JVM cancellation/process tests; device network/process stress remains unverified. |
+| F-008 | Generation tickets prevent late processes/errors from overriding stop or replacement. Deterministic launch/stop regression tests. |
+| F-009 | SSE closure/overflow reconnects with bounded exponential backoff+jitter; 401/403 fatal. Reconciles health/providers/sessions/status/pending permissions after reconnect. Full reconnect/backpressure ViewModel tests remain unimplemented. |
+| F-010 | Conflated throttled invalidations avoid continuous-event starvation. Virtual-time regression tests. |
+| F-011 | Cancellation propagated, required setup failure cannot publish CONNECTED. App-level negative scenarios remain uninstrumented. |
+| F-012 | Endpoint epoch/client/session identity checks, selection-job cancellation, endpoint-state reset and session-scoped permissions. Full endpoint/session-switch race suite remains unimplemented. |
+| F-013 | Serialized provider sync, endpoint check, explicit consent; only previously managed IDs eligible for deletion. Ownership persisted before PUT and deferred deletion survives offline/endpoint switching. Real-server/device and ownership-failure scenario tests remain unimplemented. DELETE contract checked against upstream v1.19.5 route source. |
+| F-014 | Selected project determines Git cwd; clone selects new project, expanding a repository selects it. Git actions serialized. Interactive multi-project device check remains. |
+| F-015 | File scan on IO, cancellable generation, depth limit, no symlink traversal. Device responsiveness measurement remains. |
+| F-016 | Editor uses bounded UTF-8/NUL validation, content snapshot/hash and identity checks, atomic temp+fsync+move saves. Workspace regression tests. |
+| F-017 | Root containment and symlink-component rejection for workspace operations, exclusive create and external-change checks. Workspace regression tests. Same-UID agent is trusted: not an adversarial filesystem sandbox. |
+| F-018 | Explicit server draft Apply/Cancel, port/host validation; no per-keystroke persistence/restart. Test/restart unavailable while draft dirty. UI/device scenarios remain. |
+| F-019 | Raw manifest bytes must match pinned SHA-256 before parsing; valid and substituted HTTP-response regressions. |
+| F-020 | Existing Gradle `test` entrypoint now requires blocking lintDebug, native regressions and assembleRelease (R8/resource shrinking). Only intentional ExpiredTargetSdkVersion policy exception suppressed. Workflow file unchanged (workflow write permission unavailable). CI results recorded in PR; device/instrumentation coverage remains incomplete. |
+| F-021 | Password/API-key/PAT masking and keyboard semantics. IME/device verification pending. |
+| F-022 | All models selectable with lazy provider/model rows. Large-catalog device measurement pending. |
 
-### Compatibility and verification
+## Verification boundaries
 
-- Existing remote bare hostname settings now use HTTPS on the saved port. For
-  an old plain HTTP listener, configure a valid TLS reverse proxy and its port,
-  or an encrypted tunnel to localhost. No silent downgrade or insecure-cert
-  override is offered. Local proot HTTP remains unchanged.
-- Full URLs are not accepted in the Host field; IPv6 URL formatting is delegated
-  to OkHttp's HttpUrl builder. The settings screen explains this in RU/EN.
-- TLS tests use local MockWebServer certificates: trusted peer works, the default
-  trust store rejects an untrusted self-signed peer, and redirects must not send
-  provider credentials to a second server. No real secrets or external endpoints
-  are used in these tests.
-- Launch/stop tests use latches rather than sleeps to control the critical race.
-- Local native regressions passed (7 tests). Local Gradle cannot start without a
-  JDK in this sandbox; JVM tests and APK compilation are checked by PR CI. No
-  claim of Android/ARM device or release-R8 validation is made.
+Local native suite: 7/7; XML parsing and `git diff --check` pass. No local JDK:
+Kotlin compilation, JVM tests, lint, release shrinking and per-ABI debug APKs are
+validated through PR CI. The first batch-3 CI caught a dot-symlink extraction
+bug, fixed without removing the regression test. See the PR checks for the final
+head result; an earlier green run is not evidence for a later commit.
 
-## Batch 2 — local auth, fail-closed storage and chat progress
-
-| Finding | Status | Delivered / remaining |
-|---|---|---|
-| F-003 | Implemented, device verification pending | 256-bit random local secret is committed to encrypted settings before use. Launcher, client and probe share effective local credentials; remote settings remain separate. The launcher rejects blank passwords. Tests cover persistence, concurrent callers, failed persistence, mode separation and launch environment. A second Android APK/real-device anonymous-401 check remains outstanding. |
-| F-004 | Partial | Plaintext fallback removed. Secure initialization runs off Main, with Loading/Failed/Ready startup and non-destructive retry UI; foreground service waits for initialization. Legacy plaintext files are detected and warned about, not silently loaded/deleted. Explicit legacy import/cleanup and recovery after permanent key loss remain open. Device Keystore fault-injection validation is still needed. |
-| F-010 | Implemented with virtual-time tests | Conflated throttled invalidations replace the restarting debounce; refreshes occur during a continuous event stream and a final pending invalidation is delivered. Cancellation during the delay is covered. |
-| F-011 | Implemented in ChatViewModel, scenario tests pending | Suspend catch paths rethrow CancellationException; required auth/provider/session/message setup failures propagate to ERROR instead of CONNECTED. Optional refresh/SSE failures are visible. App/ViewModel-level negative tests remain needed. |
-
-A previous local user-entered password is no longer the local server credential;
-local auth is generated and not editable in the remote credential fields. A
-manual independently started server on the same port will not be adopted by
-silently disabling authentication. There is no destructive reset/recreate action
-on the secure-startup failure screen. Old plaintext files may still contain keys;
-users must rotate exposed keys, and explicit migration/cleanup is not yet provided.
-
-## Still open
-
-F-002, F-005, F-006, F-007, F-009, F-012, F-013, F-014, F-015, F-016,
-F-017, F-018; remaining parts of F-001/F-004/F-020 and scenario/device validation
-listed above.
-
-Next security batch should address PAT-free Git authentication and migration of
-existing token-bearing origin URLs (F-002), plus explicit legacy secure-store
-migration/recovery (remaining F-004). Credential
-consent/scoping must be addressed before marking F-001 fully resolved. Process
-cancellation/reset, filesystem safety and SSE/session ownership need separate
-focused patches and regression tests; they are not implied fixed by this batch.
-
-## CI step awaiting workflow permission
-
-Insert after JVM tests in `.github/workflows/ci.yml` once GitHub workflow write
-permission is granted. This is documentation only; it does not change CI yet.
-
-```yaml
-      - name: Native ELF and Android-like seccomp regressions
-        run: python3 tools/test_proot_seccomp.py
-```
+Not performed: Android/ARM device execution, IME/accessibility interaction,
+Keystore-loss injection, independent-app local authentication, full ViewModel
+and lifecycle-race integration suites, signed-release installation or real
+secret-bearing Git/server workflows. Do not describe these as verified. No
+version bump or release publication is part of this remediation PR.
