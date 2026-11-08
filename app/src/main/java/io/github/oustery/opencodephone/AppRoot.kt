@@ -57,6 +57,7 @@ fun AppRoot(graph: AppGraph) {
     val navController = rememberNavController()
     val bootstrapState by graph.bootstrap.state.collectAsStateWithLifecycle()
     val serverState by graph.runtime.serverState.collectAsStateWithLifecycle()
+    val serverConfiguration by graph.serverConfiguration.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current
 
     // Route between the bootstrap wizard and the main experience.
@@ -79,8 +80,10 @@ fun AppRoot(graph: AppGraph) {
     // Autostart is owned by AppGraph (independent of navigation). Keep
     // setup and server startup foregrounded, but never stop the service in
     // the READY -> Starting transition.
-    LaunchedEffect(bootstrapState.phase, serverState) {
+    LaunchedEffect(bootstrapState.phase, serverState, serverConfiguration.mode) {
         when {
+            bootstrapState.phase == BootstrapPhase.READY &&
+                serverConfiguration.mode == io.github.oustery.opencodephone.core.settings.ServerMode.REMOTE -> EnvService.stop(context)
             serverState is ServerState.Starting || serverState is ServerState.Running -> EnvService.start(context)
             bootstrapState.phase == BootstrapPhase.FAILED || serverState is ServerState.Failed -> EnvService.stop(context)
             bootstrapState.phase != BootstrapPhase.READY -> EnvService.start(context)
