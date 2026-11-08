@@ -49,7 +49,19 @@ class PRootCommandTest {
         assertEquals("/root", env["HOME"])
         assertTrue(env["PATH"]!!.contains("/usr/local/bin"))
         assertEquals("1", env["PROOT_NO_SECCOMP"])
+        assertEquals("glibc.pthread.rseq=0", env["GLIBC_TUNABLES"])
         assertEquals("C.UTF-8", env["LANG"])
+    }
+
+    @Test
+    fun `probe verbosity reports terminating signals without changing guest command`() {
+        val argv = PRootCommand.build(
+            File("/rootfs"), File("/libproot.so"), File("/workspace"),
+            File("/resolv.conf"), File("/hosts"), listOf("/bin/true"),
+            verbosity = 1,
+        )
+        assertEquals("1", argv[argv.indexOf("-v") + 1])
+        assertEquals("/bin/true", argv.last())
     }
 
     @Test

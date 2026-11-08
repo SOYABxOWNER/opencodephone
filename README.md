@@ -80,16 +80,17 @@ Per-architecture APKs are built automatically:
 
 ## Troubleshooting
 
-- **"Setup failed (exit 255)" / processes killed during setup.** Android 12+
-  kills high-CPU child processes of apps (the "phantom process killer"), and
-  aggressive battery managers do the same. Keep the app on screen during
-  setup, plug the phone in, and disable battery optimization for
-  OpenCodePhone (Settings → Apps → OpenCodePhone → Battery → Unrestricted).
-  On Android 13+ you can also enable *Developer options → Disable child
-  process restrictions* (or run
-  `adb shell device_config put activity_manager max_phantom_processes 2147483647`).
-  Since v0.1.1 the setup itself runs no heavy work inside the environment,
-  so this should no longer be needed for the initial install.
+- **"Environment self-check failed (exit 255)".** This code alone does not
+  identify the cause. The preflight probe now logs proot's terminating signal.
+  **SIGSYS** (31 on arm64/x86_64) indicates a forbidden syscall, not battery
+  optimization: Debian glibc can attempt `rseq` before `/bin/true` reaches
+  `main()`. The app disables it with `GLIBC_TUNABLES=glibc.pthread.rseq=0`
+  for all guest processes. `PROOT_NO_SECCOMP=1` alone does not disable Android's
+  inherited seccomp filter. See ADR-009 and `python3 tools/test_proot_seccomp.py`.
+  For **SIGKILL** (9), Android's child-process restrictions, memory pressure or
+  aggressive battery management may be responsible. Keep the app on screen
+  and disable battery optimization for OpenCodePhone. On supported devices,
+  *Developer options → Disable child process restrictions* may also help.
 - **Where are the setup logs?** The failure dialog shows the last log lines;
   the full log is stored at `Android/data/io.github.oustery.opencodephone/
   files/linuxenv/bootstrap.log`.
