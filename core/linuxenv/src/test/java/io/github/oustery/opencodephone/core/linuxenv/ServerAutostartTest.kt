@@ -41,6 +41,51 @@ class ServerAutostartTest {
     }
 
     @Test
+    fun `manual stop survives configuration and readiness changes until explicit start`() = runTest {
+        val ready = MutableStateFlow(true)
+        val config = MutableStateFlow<ServerLaunchConfig?>(ServerLaunchConfig(4096, null, null))
+        val enabled = MutableStateFlow(true)
+        val actions = mutableListOf<String>()
+        backgroundScope.launch {
+            observeServerLifecycle(ready, config,
+                start = { actions += "start:${it.port}" }, stop = { actions += "stop" }, enabled = enabled)
+        }
+        runCurrent()
+        enabled.value = false
+        runCurrent()
+        config.value = ServerLaunchConfig(4196, null, null)
+        runCurrent()
+        ready.value = false
+        runCurrent()
+        ready.value = true
+        runCurrent()
+        assertEquals(listOf("start:4096", "stop"), actions)
+        enabled.value = true
+        runCurrent()
+        assertEquals(listOf("start:4096", "stop", "start:4196"), actions)
+    }
+
+    @Test
+    fun `manual stop cancels an in flight startup before stopping`() = runTest {
+        val enabled = MutableStateFlow(true)
+        val actions = mutableListOf<String>()
+        backgroundScope.launch {
+            observeServerLifecycle(MutableStateFlow(true),
+                MutableStateFlow(ServerLaunchConfig(4096, null, null)),
+                start = {
+                    actions += "starting"
+                    try { kotlinx.coroutines.awaitCancellation() }
+                    finally { actions += "cancelled" }
+                },
+                stop = { actions += "stop" }, enabled = enabled)
+        }
+        runCurrent()
+        enabled.value = false
+        runCurrent()
+        assertEquals(listOf("starting", "cancelled", "stop"), actions)
+    }
+
+    @Test
     fun `already installed on app launch starts without another bootstrap transition`() = runTest {
         val starts = mutableListOf<Int>()
         backgroundScope.launch {

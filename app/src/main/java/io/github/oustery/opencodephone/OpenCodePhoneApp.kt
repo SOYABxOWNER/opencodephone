@@ -45,9 +45,16 @@ class AppGraph(context: Application) {
     private val _serverConfiguration = MutableStateFlow(settings.effectiveServerConfig())
     val serverConfiguration: StateFlow<ServerConfig> = _serverConfiguration
 
+    private val _localServerEnabled = MutableStateFlow(true)
+    val localServerEnabled: StateFlow<Boolean> = _localServerEnabled
+
+    fun stopLocalServer() { _localServerEnabled.value = false }
+    fun startLocalServer() { _localServerEnabled.value = true }
+
     init {
         appScope.launch {
             observeServerLifecycle(
+                enabled = localServerEnabled,
                 ready = bootstrap.state.map { it.phase == BootstrapPhase.READY }.distinctUntilChanged(),
                 configuration = serverConfiguration.map { cfg ->
                     if (cfg.mode == ServerMode.LOCAL) ServerLaunchConfig(cfg.port, cfg.username, cfg.password) else null
@@ -63,7 +70,7 @@ class AppGraph(context: Application) {
 
     suspend fun ensureLocalServer(restart: Boolean = false) {
         val cfg = settings.effectiveServerConfig()
-        if (cfg.mode != ServerMode.LOCAL) return
+        if (cfg.mode != ServerMode.LOCAL || !localServerEnabled.value) return
         // Establish foreground importance before launching the child, not only
         // after health becomes green (which used to leave startup unprotected).
         try {
@@ -78,7 +85,8 @@ class AppGraph(context: Application) {
     }
 
     fun restartLocalServer() {
-        appScope.launch { ensureLocalServer(restart = true) }
+        if (!localServerEnabled.value) startLocalServer()
+        else appScope.launch { ensureLocalServer(restart = true) }
     }
 
     @Volatile

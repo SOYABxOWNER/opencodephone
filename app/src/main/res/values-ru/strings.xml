@@ -134,4 +134,19 @@
     <string name="action_apply">Применить</string>
     <string name="startup_reset">Сбросить защищённые настройки</string>
     <string name="startup_reset_warning">Удалить защищённые настройки и их ключ Keystore навсегда? Ключи провайдеров, Git-токен, параметры подключения и секрет локального сервера будут потеряны. Проекты и Linux-окружение сохранятся. Старые незашифрованные настройки не удаляются. Ранее раскрытые ключи нужно отозвать. При временном сбое Keystore сначала попробуйте повторить запуск.</string>
+    <string name="settings_server_stop">Остановить сервер</string>
+    <string name="settings_server_start">Запустить сервер</string>
+    <string name="settings_server_stop_note">Ручная остановка отключает автозапуск до нажатия «Запустить» или перезапуска процесса приложения. Удалённый сервер не останавливается.</string>
+    <string name="update_title">Обновления приложения</string>
+    <string name="update_installed">Установлено: %1$s</string>
+    <string name="update_note">Проверка стабильных GitHub Releases по запросу. Скачивается APK для этого устройства; Android запросит подтверждение установки.</string>
+    <string name="update_checking">Проверка GitHub…</string>
+    <string name="update_current">Новой стабильной версии нет.</string>
+    <string name="update_available">Доступна версия %1$s.</string>
+    <string name="update_downloading">Скачивание %1$s: %2$d%%</string>
+    <string name="update_ready">Версия %1$s проверена. Если потребуется, разрешите установку из этого приложения, вернитесь и снова нажмите «Установить».</string>
+    <string name="update_error">Обновление не удалось: проверьте сеть и наличие совместимого APK. Нужны больший код версии и та же подпись (debug-сборки не могут обновляться release-сборками).</string>
+    <string name="update_check">Проверить обновления</string>
+    <string name="update_download">Скачать обновление</string>
+    <string name="update_install">Установить обновление</string>
 </resources>

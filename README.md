@@ -229,3 +229,25 @@ Jetpack Compose (Material 3 Expressive).
 Сборка: `./gradlew assembleDebug` (JDK 21, Android SDK 36). Артефакты CI и
 подписанные релизы — в разделах Actions и Releases. Подробности, решения и
 ограничения — в англоязычной части README и в `docs/`.
+
+## In-app updates and server controls
+
+Settings → App updates checks the latest stable GitHub Release **on request**.
+It selects an exact per-ABI release APK, downloads to private cache (150 MiB
+limit, cancellable), checks the published SHA-256 when available, and always
+requires the same package/signing certificate and a higher Android version code.
+Android's installer still asks for confirmation. If unknown-source permission is
+needed, allow this app, return to Settings and press Install again. A cancelled
+installer can be opened again. Debug APKs cannot update to differently signed
+release APKs; signing-key rotation is intentionally not supported by this initial
+updater. No background checks, silent installation or GitHub credentials are used.
+Releases must keep the workflow's `OpenCodePhone-vVERSION-ABI.apk` names and bump
+both the stable version and Android version code. A failed check/download can be
+retried; no update replaces the currently installed APK without user consent.
+
+Settings → Local server has Stop/Start as well as Restart. Stop terminates the
+local server and disables automatic restart for the current app process, including
+configuration changes, chat reconnects and environment reinstall. Start explicitly
+re-enables it. A new app process restores the existing autostart default. This does
+not delete the environment/projects or terminate terminal sessions. Remote servers
+are never stopped by these controls.
