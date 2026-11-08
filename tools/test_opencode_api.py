@@ -26,6 +26,8 @@ import urllib.request
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, required=True)
+    parser.add_argument("--proot", type=Path, help="also run through the bundled x86_64 PRoot")
+    parser.add_argument("--android-seccomp", action="store_true", help="trap Android-incompatible syscalls (Linux x86_64)")
     args = parser.parse_args()
     binary = args.binary.resolve()
     with tempfile.TemporaryDirectory(prefix="opencode-api-test-") as tmp:
@@ -59,10 +61,20 @@ def main():
                 assert "application/json" in response.headers.get("Content-Type", "")
                 return json.load(response)
 
+        command = [str(binary), "serve", "--hostname", "127.0.0.1", "--port", str(port)]
+        if args.proot:
+            command = [str(args.proot.resolve()), "--kill-on-exit", "-0", "-r", "/", *command]
+            env["PROOT_NO_SECCOMP"] = "1"
+            env["PROOT_TMP_DIR"] = tmp
+            env["GLIBC_TUNABLES"] = "glibc.pthread.rseq=0"
+        child_setup = None
+        if args.android_seccomp:
+            from test_proot_seccomp import block_android_incompatible_syscalls
+            child_setup = block_android_incompatible_syscalls
         with open(root / "server.log", "w+") as log:
             proc = subprocess.Popen(
-                [str(binary), "serve", "--hostname", "127.0.0.1", "--port", str(port)],
-                cwd=root, env=env, stdout=log, stderr=subprocess.STDOUT,
+                command, cwd=root, env=env, stdout=log, stderr=subprocess.STDOUT,
+                preexec_fn=child_setup,
             )
             try:
                 deadline = time.monotonic() + 45

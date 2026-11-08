@@ -2,6 +2,7 @@ package io.github.oustery.opencodephone.ui.terminal
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import io.github.oustery.opencodephone.core.model.ConsoleOutput
 import io.github.oustery.opencodephone.AppGraph
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
@@ -32,7 +33,7 @@ class TerminalViewModel(private val graph: AppGraph) : ViewModel() {
     private var shellJob: Job? = null
     @Volatile private var generation = 0
     private val processGuard = Any()
-    private val lines = ArrayDeque<String>(MAX_LINES)
+    private val output = ConsoleOutput(MAX_LINES)
 
     fun start() {
         if (shellJob?.isActive == true || process?.isAlive == true) return
@@ -66,18 +67,27 @@ class TerminalViewModel(private val graph: AppGraph) : ViewModel() {
                     return@launch
                 }
                 appendLine("── OpenCodePhone shell (Debian) ──")
-                proc.inputStream.bufferedReader().forEachLine { line ->
-                    if (run == generation) appendLine(line)
+                proc.inputStream.bufferedReader().use { reader ->
+                    val chunk = CharArray(2048)
+                    while (true) {
+                        val size = reader.read(chunk)
+                        if (size < 0) break
+                        if (run == generation) appendOutput(String(chunk, 0, size))
+                    }
                 }
-                if (run == generation) {
-                    process = null
-                    appendLine("── shell exited ──")
-                    _state.update { it.copy(alive = false) }
+                synchronized(processGuard) {
+                    if (run == generation && process === proc) {
+                        process = null
+                        appendLine("── shell exited ──")
+                        _state.update { it.copy(alive = false) }
+                    }
                 }
             } catch (e: Exception) {
-                if (run == generation) {
-                    appendLine("── shell failed: ${e.message} ──")
-                    _state.update { it.copy(alive = false) }
+                synchronized(processGuard) {
+                    if (run == generation) {
+                        appendLine("── shell failed: ${e.message} ──")
+                        _state.update { it.copy(alive = false) }
+                    }
                 }
             }
         }
@@ -100,8 +110,10 @@ class TerminalViewModel(private val graph: AppGraph) : ViewModel() {
     }
 
     fun clear() {
-        synchronized(lines) { lines.clear() }
-        _state.update { it.copy(output = emptyList()) }
+        synchronized(output) {
+            output.clear()
+            _state.update { it.copy(output = emptyList()) }
+        }
     }
 
     fun restart() {
@@ -122,11 +134,12 @@ class TerminalViewModel(private val graph: AppGraph) : ViewModel() {
         runCatching { old?.destroy() }
     }
 
-    private fun appendLine(line: String) {
-        synchronized(lines) {
-            lines.addLast(line)
-            while (lines.size > MAX_LINES) lines.removeFirst()
-            _state.update { it.copy(output = lines.toList()) }
+    private fun appendLine(line: String) = appendOutput("$line\n")
+
+    private fun appendOutput(text: String) {
+        synchronized(output) {
+            val snapshot = output.append(text)
+            _state.update { it.copy(output = snapshot) }
         }
     }
 

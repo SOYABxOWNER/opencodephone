@@ -56,12 +56,26 @@ connection.
 - Chat also connects in remote mode without waiting for local Running state;
   local lifecycle updates no longer disconnect a remote connection.
 
+## Native shutdown correction
+
+Running the real V1 smoke test under the bundled tracer exposed a further
+lifecycle bug: upstream Termux PRoot ignores SIGTERM. Java Process.destroy()
+therefore did not stop it; the fallback SIGKILL could detach a surviving guest
+server, leaving its port occupied on restart. `android-shutdown.patch` routes
+SIGTERM/SIGHUP through the existing kill-all-tracees handler and lets its event
+loop reap the killed guests before exit. All three static binaries are rebuilt
+with this patch (native build suffix `-android2`). A native regression starts a
+guest, sends SIGTERM to the tracer and checks the real child PIDs are gone.
+The real server smoke test now also passes through that tracer with the
+Android-like syscall filter, including cleanup.
+
 ## Terminal and UI
 
 The terminal uses pipes, not a PTY (ADR-006). `bash -i` attempts terminal process
 group ioctls, producing the screenshot warnings. Use a persistent
 `bash --noprofile --norc -s`, echo submitted commands in the UI and retain shell
-state such as cwd. This is intentionally a line-command console, not a full TUI
+state such as cwd. Output is chunk-read so even `printf` without a newline
+appears immediately, and the bounded console buffer prevents unbounded lines. This is intentionally a line-command console, not a full TUI
 terminal. No job control or curses support is claimed.
 
 Use resize/IME insets so the command composer remains above the keyboard, and
@@ -80,6 +94,7 @@ APK version, **0.1.3 / code 4**, instead of the hardcoded 0.1.0.
   warnings, alongside the existing Android-like seccomp/native ELF checks.
 - `tools/test_opencode_api.py --binary <real 1.19.5 binary>` launches an isolated,
   authenticated real server and verifies health, sessions/messages, agents and
-  providers without model prompts/API keys. Passed on Linux x86_64.
+  providers without model prompts/API keys. Passed on Linux x86_64 both directly and through the actual bundled PRoot
+  under Android-like seccomp restrictions (`--proot <path> --android-seccomp`).
 - Real Android lifecycle/keyboard and ARM CLI execution still require device
   testing. Host smoke tests do not establish those results.

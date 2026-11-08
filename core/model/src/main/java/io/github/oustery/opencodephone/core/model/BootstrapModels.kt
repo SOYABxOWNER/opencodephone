@@ -73,7 +73,7 @@ object Pins {
     const val OPENCODE_NPM_PACKAGE_PREFIX: String = "opencode-"
 
     /** Android-compatible static PRoot (Termux fork; see tools/build_proot.py). */
-    const val PROOT_VERSION: String = "termux-52d65a4dc140"
+    const val PROOT_VERSION: String = "termux-52d65a4dc140-android2"
 
     /**
      * Pre-resolved toolset tarballs (git, curl, ripgrep and their dependency

@@ -125,7 +125,10 @@ fun SettingsScreen(graph: AppGraph) {
                             )
                         }
                         if (state.server.mode == ServerMode.LOCAL) {
-                            OutlinedButton(onClick = { vm.restartServer() }) {
+                            OutlinedButton(
+                                onClick = { vm.restartServer() },
+                                enabled = state.bootstrap.phase == io.github.oustery.opencodephone.core.model.BootstrapPhase.READY,
+                            ) {
                                 Text(stringResource(R.string.settings_server_restart))
                             }
                             state.serverError?.let { Text(it, color = MaterialTheme.colorScheme.error) }

@@ -62,7 +62,7 @@ def build(abi, zig, source, talloc):
     work.mkdir()
     src = work / "src"
     shutil.copytree(source / "src", src)
-    for patch in ("zig-loader.patch", "android-seccomp-log.patch"):
+    for patch in ("zig-loader.patch", "android-seccomp-log.patch", "android-shutdown.patch"):
         run(["patch", "-p1", "-i", SUPPORT / patch], cwd=work)
     # Linker's .text address option is not supported by zig cc; use an
     # equivalent script. Align each segment, including on 16 KB Android pages.
@@ -132,7 +132,7 @@ print('const ssize_t offset_to_pokedata_workaround=%d;' %
          f"-I{talloc}", "-o", work / "talloc.o"])
     run([zig, "ar", "rcs", work / "libtalloc.a", work / "talloc.o"])
     version_script = work / "version"
-    version_text = f'#undef VERSION\n#define VERSION "termux-{PROOT_COMMIT[:12]}"'
+    version_text = f'#undef VERSION\n#define VERSION "termux-{PROOT_COMMIT[:12]}-android2"'
     executable(version_script, f"#!/usr/bin/env python3\nprint({version_text!r})\n")
     # musl uses SYS_fork on x86_64, but Android app policies only allow
     # clone there. Preserve musl's atfork/lock/TLS handling and change only
