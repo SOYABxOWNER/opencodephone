@@ -8,6 +8,11 @@ android {
     namespace = "io.github.oustery.opencodephone"
     compileSdk = 37
 
+    // Release workflow (.github/workflows/release.yml) passes the tag-driven
+    // version via -PversionName / -PversionCode; local builds use the defaults.
+    val ciVersionName = providers.gradleProperty("versionName")
+    val ciVersionCode = providers.gradleProperty("versionCode").map { it.toInt() }
+
     defaultConfig {
         applicationId = "io.github.oustery.opencodephone"
         minSdk = 26
@@ -17,8 +22,9 @@ android {
         // proot must execve guest binaries straight out of the rootfs in app
         // data, so the app must keep the legacy untrusted_app_27 domain.
         targetSdk = 28
-        versionCode = 4
-        versionName = "0.1.3"
+        versionCode = ciVersionCode.getOrElse(4)
+        versionName = ciVersionName.getOrElse("0.1.3")
+        manifestPlaceholders["appLabel"] = "OpenCodePhone"
     }
 
     // One APK per architecture: each APK bundles only the matching proot binary.
@@ -54,6 +60,27 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            val ciRelease = signingConfigs.findByName("ciRelease")
+            if (ciRelease != null) {
+                signingConfig = ciRelease
+            }
+        }
+
+        // Dev channel: release-grade build of the same commit, published as a
+        // vX.Y.Z-dev.N pre-release. Separate application id (installs side by
+        // side with the stable app) and launcher label. The in-app updater only
+        // ever selects non-prerelease releases, so dev builds never receive
+        // stable update cards (their versionName does not match v?X.Y.Z either).
+        create("dev") {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+            applicationIdSuffix = ".dev"
+            manifestPlaceholders["appLabel"] = "OpenCodePhone Dev"
+            matchingFallbacks += listOf("release")
             val ciRelease = signingConfigs.findByName("ciRelease")
             if (ciRelease != null) {
                 signingConfig = ciRelease

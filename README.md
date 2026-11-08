@@ -70,13 +70,22 @@ Per-architecture APKs are built automatically:
 | `OpenCodePhone-vX.Y.Z-armeabi-v7a.apk` | 32-bit devices (terminal + remote mode only) |
 | `OpenCodePhone-vX.Y.Z-x86_64.apk` | emulators, ChromeOS |
 
-- Every push to `main` → CI runs unit tests and uploads **debug APK artifacts**.
-- Every `v*` tag → signed **release APKs** attached to a GitHub Release
-  (release keystore lives in repository Secrets, never in the repository).
-- Each release also carries `toolset-<arch>.tar.gz` assets — digest-pinned
-  tool bundles the app downloads during first-time setup (see
-  `docs/adr/ADR-008-toolset-bootstrap.md`). Rebuild them with
-  `tools/build_toolset.py <arch>…` and update the digests in `Pins`.
+- Every push to `main` → the **Release** workflow itself tags the commit and
+  publishes two signed builds:
+  - `vX.Y.Z` — stable **release** (marked *Latest*; this is exactly the
+    channel the in-app updater installs from);
+  - `vX.Y.Z-dev.N` — signed **dev pre-release** built from the same commit
+    (`OpenCodePhone Dev`, separate application id, installs side by side with
+    the stable app; never selected by the in-app updater).
+- Tags and Android version codes are derived automatically (latest
+  `vX.Y.Z` tag / `versionName` + patch bump; versionCode = run number × 10),
+  so each release updates cleanly over the previous one. Manual runs:
+  Actions → Release → Run workflow (optionally pin a version); pushing any
+  `vX.Y.Z` tag builds exactly that version.
+- The digest-pinned `toolset-<arch>.tar.gz` bundles live on the `v0.1.1`
+  release (`Pins.TOOLSET_URL_PREFIX`); they are not rebuilt per release.
+  Rebuild them with `tools/build_toolset.py <arch>…` and update the digests
+  in `Pins` when the toolset itself changes.
 
 ## Server compatibility
 
@@ -226,8 +235,10 @@ Jetpack Compose (Material 3 Expressive).
   проверкой SRI — все версии зафиксированы (см. `Pins.kt` и
   [ADR-003](docs/adr/ADR-003-opencode-install.md)).
 
-Сборка: `./gradlew assembleDebug` (JDK 21, Android SDK 36). Артефакты CI и
-подписанные релизы — в разделах Actions и Releases. Подробности, решения и
+Сборка: `./gradlew assembleDebug` (JDK 21, Android SDK 36). Релизы создаются
+автоматически: каждый push в `main` — workflow сам ставит теги, публикует
+подписанные стабильный `vX.Y.Z` и dev-пререлиз `vX.Y.Z-dev.N` с APK (см. раздел
+Releases). CI-артефакты (debug APK) — в разделе Actions. Подробности, решения и
 ограничения — в англоязычной части README и в `docs/`.
 
 ## In-app updates and server controls
