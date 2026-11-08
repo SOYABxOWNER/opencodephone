@@ -57,6 +57,7 @@ fun SettingsScreen(graph: AppGraph) {
     val vm: SettingsViewModel = viewModel(factory = VmFactory.of { SettingsViewModel(graph) })
     val state by vm.state.collectAsStateWithLifecycle()
     val serverEnabled by graph.localServerEnabled.collectAsStateWithLifecycle()
+    val runtimeState by graph.runtime.serverState.collectAsStateWithLifecycle()
 
     Column(modifier = Modifier.fillMaxSize()) {
         ScreenHeader(title = stringResource(R.string.tab_settings))
@@ -139,11 +140,11 @@ fun SettingsScreen(graph: AppGraph) {
                             }
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = vm::applyServer) { Text(stringResource(R.string.action_apply)) }
-                            OutlinedButton(onClick = vm::cancelServerChanges) { Text(stringResource(R.string.action_cancel)) }
+                            Button(onClick = vm::applyServer, enabled = state.serverDirty) { Text(stringResource(R.string.action_apply)) }
+                            OutlinedButton(onClick = vm::cancelServerChanges, enabled = state.serverDirty) { Text(stringResource(R.string.action_cancel)) }
                         }
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = { vm.testConnection() }, enabled = !state.serverDirty) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { vm.testConnection() }, enabled = !state.serverDirty) {
                                 Text(stringResource(R.string.settings_server_test))
                             }
                             OcStatusChip(
@@ -152,17 +153,26 @@ fun SettingsScreen(graph: AppGraph) {
                             )
                         }
                         if (state.server.mode == ServerMode.LOCAL) {
-                            OutlinedButton(
-                                onClick = { if (serverEnabled) graph.stopLocalServer() else graph.startLocalServer() },
+                            Button(
+                                onClick = {
+                                    if (serverEnabled && (runtimeState is io.github.oustery.opencodephone.core.linuxenv.ServerState.Running ||
+                                            runtimeState is io.github.oustery.opencodephone.core.linuxenv.ServerState.Starting)) graph.stopLocalServer()
+                                    else graph.restartLocalServer()
+                                },
                                 enabled = !state.serverDirty && state.bootstrap.phase == io.github.oustery.opencodephone.core.model.BootstrapPhase.READY,
                             ) {
-                                Text(stringResource(if (serverEnabled) R.string.settings_server_stop else R.string.settings_server_start))
+                                Text(stringResource(if (serverEnabled && (runtimeState is io.github.oustery.opencodephone.core.linuxenv.ServerState.Running ||
+                                    runtimeState is io.github.oustery.opencodephone.core.linuxenv.ServerState.Starting)) R.string.settings_server_stop else R.string.settings_server_start))
                             }
-                            Text(stringResource(R.string.settings_server_stop_note), style = MaterialTheme.typography.bodySmall)
+                            io.github.oustery.opencodephone.core.designsystem.OcDisclosure(
+                                title = stringResource(R.string.settings_server_help),
+                                expandedDescription = stringResource(R.string.state_expanded),
+                                collapsedDescription = stringResource(R.string.state_collapsed),
+                            ) { Text(stringResource(R.string.settings_server_stop_note), style = MaterialTheme.typography.bodySmall) }
 
                             OutlinedButton(
                                 onClick = { vm.restartServer() },
-                                enabled = !state.serverDirty && state.bootstrap.phase == io.github.oustery.opencodephone.core.model.BootstrapPhase.READY,
+                                enabled = !state.serverDirty && runtimeState is io.github.oustery.opencodephone.core.linuxenv.ServerState.Running,
                             ) {
                                 Text(stringResource(R.string.settings_server_restart))
                             }

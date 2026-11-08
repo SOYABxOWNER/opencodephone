@@ -1,6 +1,9 @@
 package io.github.oustery.opencodephone
 
 import androidx.compose.foundation.background
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -114,7 +117,7 @@ fun AppRoot(graph: AppGraph) {
 private fun AppNavHost(navController: androidx.navigation.NavHostController, graph: AppGraph) {
     NavHost(navController = navController, startDestination = Routes.BOOTSTRAP) {
         composable(Routes.BOOTSTRAP) { BootstrapScreen(graph) }
-        composable(Routes.CHAT) { ChatScreen(graph) }
+        composable(Routes.CHAT) { ChatScreen(graph, onOpenSettings = { navigateTo(navController, Routes.SETTINGS) }) }
         composable(Routes.FILES) { FilesScreen(graph) }
         composable(Routes.TERMINAL) { TerminalScreen(graph) }
         composable(Routes.SETTINGS) { SettingsScreen(graph) }
@@ -182,28 +185,24 @@ fun ScreenHeader(
     modifier: Modifier = Modifier,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface)
-            .statusBarsPadding()
-            .padding(horizontal = 20.dp, vertical = 12.dp),
+    BoxWithConstraints(
+        modifier = modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)
+            .statusBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                content = actions,
-            )
+        if (maxWidth < 480.dp) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(title, style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.semantics { heading() })
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp), content = actions)
+            }
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(title, style = MaterialTheme.typography.headlineSmall, maxLines = 1,
+                    overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).semantics { heading() })
+                Row(modifier = Modifier.weight(2f), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.End, content = actions)
+            }
         }
     }
 }

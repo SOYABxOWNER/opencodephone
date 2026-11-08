@@ -15,3 +15,10 @@ val AppShapes = Shapes(
     large = RoundedCornerShape(32.dp),
     extraLarge = RoundedCornerShape(48.dp),
 )
+
+/** Meaningful message roles, kept separate from generic component radii. */
+object AppMessageShapes {
+    val composer = RoundedCornerShape(24.dp)
+    val incoming = RoundedCornerShape(20.dp, 20.dp, 20.dp, 4.dp)
+    val outgoing = RoundedCornerShape(20.dp, 20.dp, 4.dp, 20.dp)
+}

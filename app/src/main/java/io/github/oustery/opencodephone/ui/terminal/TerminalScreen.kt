@@ -54,7 +54,7 @@ fun TerminalScreen(graph: AppGraph) {
             actions = {
                 IconButton(onClick = { vm.clear() }) {
                     Icon(
-                        painterResource(R.drawable.ic_stop),
+                        painterResource(R.drawable.ic_clear_output),
                         contentDescription = stringResource(R.string.terminal_clear),
                     )
                 }
@@ -81,11 +81,7 @@ fun TerminalScreen(graph: AppGraph) {
                     items(state.output) { line ->
                         Text(
                             text = line,
-                            style = TextStyle(
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 11.sp,
-                                lineHeight = 15.sp,
-                            ),
+                            style = io.github.oustery.opencodephone.core.designsystem.CodeTypography.output,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -125,7 +121,7 @@ fun TerminalScreen(graph: AppGraph) {
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                     keyboardActions = KeyboardActions(onSend = { vm.send() }),
-                    textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 14.sp),
+                    textStyle = io.github.oustery.opencodephone.core.designsystem.CodeTypography.editor,
                     shape = MaterialTheme.shapes.small,
                 )
                 IconButton(
