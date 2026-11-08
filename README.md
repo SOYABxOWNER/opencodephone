@@ -149,9 +149,16 @@ Version pins live in `gradle/libs.versions.toml` and
 
 - Provider API keys and the GitHub token are stored in
   `EncryptedSharedPreferences` (Android Keystore); keys are injected into the
-  local opencode server on connect and never leave the device except to the
-  LLM provider / GitHub you configure.
-- The local server is bound to `127.0.0.1`; a password can be set in Settings.
+  selected opencode server on connect. A remote server receives those provider
+  keys, so it must be trusted. Existing Git PAT-in-URL behavior remains tracked
+  as F-002; encrypted settings do not protect copies in a repository config.
+- The local server is bound to `127.0.0.1` and requires an automatically generated
+  256-bit secret stored in encrypted settings, separate from remote credentials.
+  The app and its health probe use the same stable local secret.
+- If secure settings cannot be opened, startup shows a retry screen without
+  deleting data or falling back to plaintext. Old plaintext settings are not
+  automatically read/imported/deleted; Settings warns if the legacy file exists.
+  Retry may resolve a temporarily unavailable Keystore, not permanently lost keys.
 - Non-loopback remote hosts use **HTTPS with certificate validation**. Enter a
   bare hostname/IP in Settings and set the TLS listener's port (usually 443).
   Put a plain OpenCode V1 server behind a trusted HTTPS reverse proxy that also

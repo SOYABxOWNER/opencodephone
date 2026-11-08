@@ -34,12 +34,12 @@ data class ModelSelection(
 
 /**
  * Encrypted settings storage (Android Keystore-backed).
- * Falls back to plain preferences if the hardware keystore is unavailable —
- * acceptable for a development tool, documented in ADR-003.
+ * Fails closed if Keystore cannot be opened. Startup offers retry without
+ * deleting settings; credentials are never written to a plaintext fallback.
  */
 class SettingsStore(context: Context) {
 
-    private val prefs: SharedPreferences = try {
+    private val prefs: SharedPreferences = openSecureSettings {
         val masterKey = MasterKey.Builder(context)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
             .build()
@@ -50,9 +50,20 @@ class SettingsStore(context: Context) {
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
         )
-    } catch (_: Exception) {
-        context.getSharedPreferences("opencodephone_fallback", Context.MODE_PRIVATE)
     }
+
+    // Detect legacy data without loading it or silently preferring stale plaintext values.
+    val hasLegacyPlaintextSettings: Boolean = java.io.File(
+        context.applicationInfo.dataDir, "shared_prefs/opencodephone_fallback.xml",
+    ).exists()
+
+    private val localSecret = PersistentLocalSecret(
+        read = { prefs.getString(KEY_LOCAL_SERVER_SECRET, null) },
+        persist = { prefs.edit().putString(KEY_LOCAL_SERVER_SECRET, it).commit() },
+    )
+
+    /** The local API never uses a blank password or reuses a remote credential. */
+    fun effectiveServerConfig(): ServerConfig = effectiveServerConfig(serverConfig(), localSecret::get)
 
     private fun edit(block: (SharedPreferences.Editor) -> Unit) {
         val editor = prefs.edit()
@@ -140,6 +151,7 @@ class SettingsStore(context: Context) {
     fun setBootstrapCompleted() = edit { it.putBoolean(KEY_BOOTSTRAP_DONE, true) }
 
     private companion object {
+        const val KEY_LOCAL_SERVER_SECRET = "local_server_secret"
         const val KEY_SERVER_MODE = "server_mode"
         const val KEY_SERVER_HOST = "server_host"
         const val KEY_SERVER_PORT = "server_port"

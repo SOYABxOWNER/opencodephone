@@ -66,6 +66,9 @@ fun SettingsScreen(graph: AppGraph) {
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp),
             ) {
+                if (state.legacyPlaintextSettings) {
+                    Text(stringResource(R.string.settings_legacy_plaintext), color = MaterialTheme.colorScheme.error)
+                }
                 // ---- Server ------------------------------------------------
                 OcSectionHeader(stringResource(R.string.settings_server_header))
                 Card(shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
@@ -102,25 +105,31 @@ fun SettingsScreen(graph: AppGraph) {
                                 modifier = Modifier.weight(1f),
                                 shape = MaterialTheme.shapes.small,
                             )
+                            if (state.server.mode == ServerMode.REMOTE) {
+                                OutlinedTextField(
+                                    value = state.server.username,
+                                    onValueChange = { vm.setUsername(it) },
+                                    label = { Text(stringResource(R.string.settings_server_user)) },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f),
+                                    shape = MaterialTheme.shapes.small,
+                                )
+                            }
+                        }
+                        if (state.server.mode == ServerMode.REMOTE) {
                             OutlinedTextField(
-                                value = state.server.username,
-                                onValueChange = { vm.setUsername(it) },
-                                label = { Text(stringResource(R.string.settings_server_user)) },
+                                value = state.server.password,
+                                visualTransformation = PasswordVisualTransformation(),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                                onValueChange = { vm.setPassword(it) },
+                                label = { Text(stringResource(R.string.settings_server_password)) },
                                 singleLine = true,
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.fillMaxWidth(),
                                 shape = MaterialTheme.shapes.small,
                             )
+                        } else {
+                            Text(stringResource(R.string.settings_local_auth), style = MaterialTheme.typography.bodySmall)
                         }
-                        OutlinedTextField(
-                            value = state.server.password,
-                            visualTransformation = PasswordVisualTransformation(),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                            onValueChange = { vm.setPassword(it) },
-                            label = { Text(stringResource(R.string.settings_server_password)) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = MaterialTheme.shapes.small,
-                        )
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(onClick = { vm.testConnection() }) {
                                 Text(stringResource(R.string.settings_server_test))

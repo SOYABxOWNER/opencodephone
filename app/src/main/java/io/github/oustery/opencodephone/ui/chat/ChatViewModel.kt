@@ -16,7 +16,7 @@ import io.github.oustery.opencodephone.core.settings.ModelSelection
 import io.github.oustery.opencodephone.core.settings.ServerMode
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
+import io.github.oustery.opencodephone.core.opencode.throttledInvalidations
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -79,10 +79,9 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                 }
         }
 
-        // Debounced message reload driven by SSE events.
+        // Throttled/coalesced reloads make progress even during continuous token streams.
         viewModelScope.launch {
-            reloadSignal.collectLatest {
-                delay(200)
+            reloadSignal.throttledInvalidations().collect {
                 _state.value.activeSessionId?.let { loadMessages(it) }
             }
         }
@@ -111,45 +110,36 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
     /** Push locally stored provider keys into the opencode server auth store. */
     private suspend fun syncProviderKeys() {
         graph.settings.providerKeys().forEach { key ->
-            runCatching {
-                graph.client.setProviderAuth(
-                    key.providerId,
-                    buildJsonObject {
-                        put("type", "api")
-                        put("key", key.apiKey)
-                    },
-                )
-            }
+            graph.client.setProviderAuth(
+                key.providerId,
+                buildJsonObject {
+                    put("type", "api")
+                    put("key", key.apiKey)
+                },
+            )
         }
     }
 
     private suspend fun loadProviders() {
-        try {
-            val providers = graph.client.listProviders()
-            val selection = graph.settings.modelSelection()
-            _state.update {
-                it.copy(
-                    providers = providers.all,
-                    connectedProviders = providers.connected,
-                    modelSelection = selection.takeIf { s -> s.providerId.isNotBlank() },
-                )
-            }
-        } catch (_: Exception) {
+        val providers = graph.client.listProviders()
+        val selection = graph.settings.modelSelection()
+        _state.update {
+            it.copy(
+                providers = providers.all,
+                connectedProviders = providers.connected,
+                modelSelection = selection.takeIf { s -> s.providerId.isNotBlank() },
+            )
         }
     }
 
     private suspend fun loadSessions() {
-        try {
-            val sessions = graph.client.listSessions()
-                .sortedByDescending { it.time?.created ?: 0L }
-            _state.update { state ->
-                val active = state.activeSessionId ?: sessions.firstOrNull()?.id
-                state.copy(sessions = sessions, activeSessionId = active)
-            }
-            _state.value.activeSessionId?.let { loadMessages(it) }
-        } catch (e: Exception) {
-            _state.update { it.copy(error = e.message) }
+        val sessions = graph.client.listSessions().sortedByDescending { it.time?.created ?: 0L }
+        _state.update { state ->
+            val active = state.activeSessionId?.takeIf { id -> sessions.any { it.id == id } }
+                ?: sessions.firstOrNull()?.id
+            state.copy(sessions = sessions, activeSessionId = active)
         }
+        _state.value.activeSessionId?.let { loadMessages(it, required = true) }
     }
 
     private fun subscribeEvents() {
@@ -159,8 +149,11 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                 graph.client.events().collect { event ->
                     handleEvent(event)
                 }
-            } catch (_: Exception) {
-                // Stream drop — connection state recovers via serverState.
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update { it.copy(connection = ChatConnection.ERROR, error = e.message, busy = false) }
+                // Automatic reconnect/reconciliation is tracked separately as F-009.
             }
         }
     }
@@ -206,11 +199,14 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
             val sessions = graph.client.listSessions()
                 .sortedByDescending { it.time?.created ?: 0L }
             _state.update { it.copy(sessions = sessions) }
-        } catch (_: Exception) {
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            _state.update { it.copy(error = e.message) }
         }
     }
 
-    private suspend fun loadMessages(sessionId: String) {
+    private suspend fun loadMessages(sessionId: String, required: Boolean = false) {
         try {
             val raw: List<MessageWithParts> = graph.client.listMessages(sessionId)
             val ui = raw.map { msg ->
@@ -221,8 +217,11 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                 )
             }.filter { it.parts.isNotEmpty() }
             _state.update { it.copy(messages = ui) }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             _state.update { it.copy(error = e.message) }
+            if (required) throw e
         }
     }
 
@@ -238,6 +237,8 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                     it.copy(activeSessionId = session.id, messages = emptyList(), showSessions = false)
                 }
                 loadSessionsQuiet()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.update { it.copy(error = e.message) }
             }
@@ -265,6 +266,8 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                     modelId = selection?.modelId,
                     agent = null,
                 )
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.update { it.copy(error = e.message, busy = false) }
             }
@@ -276,6 +279,8 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
         viewModelScope.launch {
             try {
                 graph.client.abort(sessionId)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.update { it.copy(error = e.message) }
             }
@@ -288,6 +293,8 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
             try {
                 graph.client.respondPermission(request.sessionId, request.permissionId, response)
                 _state.update { it.copy(permission = null) }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.update { it.copy(error = e.message) }
             }

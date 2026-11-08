@@ -31,12 +31,7 @@ class EnvironmentRuntime(
             check(layout.isInstalled() && layout.opencodeBin().isFile) {
                 "Local CLI is not installed on this device. Finish setup or select a remote V1 server."
             }
-            val env = buildMap {
-                if (!cfg.password.isNullOrBlank()) {
-                    put("OPENCODE_SERVER_PASSWORD", cfg.password)
-                    put("OPENCODE_SERVER_USERNAME", cfg.username?.ifBlank { "opencode" } ?: "opencode")
-                }
-            }
+            val env = localServerEnvironment(cfg)
             process(
                 listOf("opencode", "serve", "--hostname", "127.0.0.1", "--port", cfg.port.toString()),
                 env = env, cwd = PRootCommand.WORKSPACE_MOUNT, mergeOutput = true,

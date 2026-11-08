@@ -124,4 +124,9 @@
     <string name="env_service_stopped">OpenCode server stopped</string>
     <string name="settings_server_restart">Start / restart server</string>
     <string name="settings_remote_security">Remote hosts use HTTPS with certificate validation. Enter a hostname or IP, not a URL. For an HTTP server, use a secure tunnel to localhost.</string>
+    <string name="startup_loading">Opening secure settings…</string>
+    <string name="startup_failed">The app could not be initialized safely. Secure settings may be unavailable. No settings or projects have been deleted. Unlock the device and retry. No plaintext fallback will be used.</string>
+    <string name="action_retry">Retry</string>
+    <string name="settings_local_auth">Local API authentication uses an automatically generated secret stored in encrypted settings. Remote credentials are separate.</string>
+    <string name="settings_legacy_plaintext">Legacy unencrypted settings were found. They are no longer read or written. Existing data is preserved: re-enter any missing credentials and rotate old keys; automatic migration or deletion is not performed.</string>
 </resources>

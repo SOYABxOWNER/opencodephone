@@ -26,6 +26,7 @@ data class SettingsUiState(
     val serverStateLabel: String = "",
     val serverError: String? = null,
     val serverLog: String = "",
+    val legacyPlaintextSettings: Boolean = false,
     val showAddProvider: Boolean = false,
     val showReinstallConfirm: Boolean = false,
 )
@@ -69,6 +70,7 @@ class SettingsViewModel(private val graph: AppGraph) : ViewModel() {
     fun reload() {
         _state.update {
             it.copy(
+                legacyPlaintextSettings = settings.hasLegacyPlaintextSettings,
                 server = settings.serverConfig(),
                 providers = settings.providerKeys(),
                 git = settings.gitConfig(),
