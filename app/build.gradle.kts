@@ -10,8 +10,11 @@ android {
 
     // Release workflow (.github/workflows/release.yml) passes the tag-driven
     // version via -PversionName / -PversionCode; local builds use the defaults.
-    val ciVersionName = providers.gradleProperty("versionName")
-    val ciVersionCode = providers.gradleProperty("versionCode").map { it.toInt() }
+    val ciVersionName = providers.gradleProperty("versionName").filter { it.isNotBlank() }
+    val ciVersionCode = providers.gradleProperty("versionCode")
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .map { it.toInt() }
 
     defaultConfig {
         applicationId = "io.github.oustery.opencodephone"
