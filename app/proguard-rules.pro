@@ -9,3 +9,7 @@
 -dontwarn org.apache.commons.compress.utils.CountingInputStream
 -dontwarn org.tukaani.xz.XZOutputStream
 -dontwarn org.tukaani.xz.XZInputStream
+
+# Tink (via androidx.security:security-crypto) references compile-only
+# error-prone annotations that are absent from the Android artifact.
+-dontwarn com.google.errorprone.annotations.**
