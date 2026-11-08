@@ -28,6 +28,7 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
+import okhttp3.HttpUrl
 import okhttp3.Credentials
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -46,9 +47,19 @@ data class ConnectionConfig(
     val port: Int = 4096,
     val username: String? = null,
     val password: String? = null,
+    val scheme: String = if (isLoopbackHost(host)) "http" else "https",
 ) {
-    val baseUrl: String get() = "http://$host:$port"
+    val baseUrl: String get() {
+        require(scheme == "https" || (scheme == "http" && isLoopbackHost(host))) {
+            "Remote connections require HTTPS. Use a loopback secure tunnel for an HTTP server."
+        }
+        return HttpUrl.Builder().scheme(scheme).host(host).port(port).build().toString().removeSuffix("/")
+    }
 }
+
+/** Deliberately no DNS lookup: a remote hostname must not opt itself into cleartext. */
+private fun isLoopbackHost(host: String): Boolean =
+    host.lowercase() in setOf("127.0.0.1", "localhost", "::1", "[::1]")
 
 class OpenCodeApiException(val code: Int, message: String) : Exception(message)
 
@@ -64,9 +75,11 @@ class OpenCodeClient(
 ) {
 
     private val json = OcJson.lenient
-    private val loopbackClient = client.newBuilder().proxy(java.net.Proxy.NO_PROXY).build()
-    private fun transport(): OkHttpClient =
-        if (config.host in setOf("127.0.0.1", "localhost", "::1", "[::1]")) loopbackClient else client
+    // Never follow an HTTPS -> HTTP redirect with credentials or a prompt body.
+    private val secureClient = client.newBuilder().followRedirects(false).followSslRedirects(false).build()
+    private val loopbackClient = secureClient.newBuilder().proxy(java.net.Proxy.NO_PROXY).build()
+    private fun transport(snapshot: ConnectionConfig): OkHttpClient =
+        if (isLoopbackHost(snapshot.host)) loopbackClient else secureClient
 
     companion object {
         fun defaultHttpClient(): OkHttpClient = OkHttpClient.Builder()
@@ -79,10 +92,10 @@ class OpenCodeClient(
         fun q(value: String): String = URLEncoder.encode(value, Charsets.UTF_8.name())
     }
 
-    private fun Request.Builder.withAuth(): Request.Builder {
-        val pass = config.password
+    private fun Request.Builder.withAuth(snapshot: ConnectionConfig): Request.Builder {
+        val pass = snapshot.password
         if (!pass.isNullOrBlank()) {
-            header("Authorization", Credentials.basic(config.username?.ifBlank { "opencode" } ?: "opencode", pass))
+            header("Authorization", Credentials.basic(snapshot.username?.ifBlank { "opencode" } ?: "opencode", pass))
         }
         return this
     }
@@ -93,15 +106,16 @@ class OpenCodeClient(
         path: String,
         body: JsonElement? = null,
     ): String? = withContext(Dispatchers.IO) {
+        val snapshot = config
         val mediaType = "application/json; charset=utf-8".toMediaType()
         val bodyStr = body?.let { json.encodeToString(JsonElement.serializer(), it) }
         val request = Request.Builder()
-            .url(config.baseUrl + path)
-            .withAuth()
+            .url(snapshot.baseUrl + path)
+            .withAuth(snapshot)
             .header("Accept", "application/json")
             .method(method, bodyStr?.toRequestBody(mediaType))
             .build()
-        transport().newCall(request).execute().use { response: Response ->
+        transport(snapshot).newCall(request).execute().use { response: Response ->
             val text = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
                 throw OpenCodeApiException(
@@ -153,11 +167,12 @@ class OpenCodeClient(
     fun globalEvents(): Flow<ServerEvent> = eventStream("/global/event")
 
     private fun eventStream(path: String): Flow<ServerEvent> = callbackFlow {
+        val snapshot = config
         val request = Request.Builder()
-            .url(config.baseUrl + path)
-            .withAuth()
+            .url(snapshot.baseUrl + path)
+            .withAuth(snapshot)
             .build()
-        val source = EventSources.createFactory(transport()).newEventSource(
+        val source = EventSources.createFactory(transport(snapshot)).newEventSource(
             request,
             object : EventSourceListener() {
                 override fun onEvent(eventSource: EventSource, id: String?, type: String?, data: String) {

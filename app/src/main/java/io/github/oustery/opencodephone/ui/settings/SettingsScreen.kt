@@ -1,5 +1,8 @@
 package io.github.oustery.opencodephone.ui.settings
 
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -80,6 +83,7 @@ fun SettingsScreen(graph: AppGraph) {
                             )
                         }
                         if (state.server.mode == ServerMode.REMOTE) {
+                            Text(stringResource(R.string.settings_remote_security), style = MaterialTheme.typography.bodySmall)
                             OutlinedTextField(
                                 value = state.server.host,
                                 onValueChange = { vm.setHost(it) },
@@ -109,6 +113,8 @@ fun SettingsScreen(graph: AppGraph) {
                         }
                         OutlinedTextField(
                             value = state.server.password,
+                            visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                             onValueChange = { vm.setPassword(it) },
                             label = { Text(stringResource(R.string.settings_server_password)) },
                             singleLine = true,
@@ -203,6 +209,8 @@ fun SettingsScreen(graph: AppGraph) {
                         )
                         OutlinedTextField(
                             value = state.git.githubToken,
+                            visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                             onValueChange = { vm.setGitToken(it) },
                             label = { Text(stringResource(R.string.settings_git_token)) },
                             singleLine = true,
@@ -347,6 +355,8 @@ private fun AddProviderDialog(
                 }
                 OutlinedTextField(
                     value = apiKey,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     onValueChange = { apiKey = it },
                     label = { Text(stringResource(R.string.settings_providers_key)) },
                     singleLine = true,

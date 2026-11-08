@@ -58,7 +58,8 @@ class DockerRegistryClient(private val callFactory: Call.Factory) {
                 .build(),
         ).execute().use { resp ->
             check(resp.isSuccessful) { "Manifest fetch failed: HTTP ${resp.code}" }
-            json.parseToJsonElement(resp.body?.string().orEmpty()).jsonObject
+            val bytes = checkNotNull(resp.body) { "Empty manifest response" }.bytes()
+            parseVerifiedManifest(bytes, digest)
         }
     }
 
@@ -114,6 +115,14 @@ class DockerRegistryClient(private val callFactory: Call.Factory) {
     }
 
     companion object {
+        /** Hash the original bytes before parsing: JSON reformatting changes an OCI digest. */
+        internal fun parseVerifiedManifest(bytes: ByteArray, digest: String): JsonObject {
+            val actual = MessageDigest.getInstance("SHA-256").digest(bytes)
+                .joinToString("") { "%02x".format(it) }
+            check(digest == "sha256:$actual") { "Manifest digest mismatch" }
+            return OcJson.lenient.parseToJsonElement(bytes.toString(Charsets.UTF_8)).jsonObject
+        }
+
         fun longTimeoutClient(): OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
             .readTimeout(120, java.util.concurrent.TimeUnit.SECONDS)

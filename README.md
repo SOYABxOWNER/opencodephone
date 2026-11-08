@@ -152,7 +152,15 @@ Version pins live in `gradle/libs.versions.toml` and
   local opencode server on connect and never leave the device except to the
   LLM provider / GitHub you configure.
 - The local server is bound to `127.0.0.1`; a password can be set in Settings.
-- Remote mode uses HTTP — use it only on networks you trust.
+- Non-loopback remote hosts use **HTTPS with certificate validation**. Enter a
+  bare hostname/IP in Settings and set the TLS listener's port (usually 443).
+  Put a plain OpenCode V1 server behind a trusted HTTPS reverse proxy that also
+  forwards SSE, or use an authenticated encrypted tunnel terminating on the
+  phone's localhost. HTTP is allowed only for explicit loopback hosts, never as
+  a fallback after a failed TLS connection. Redirects are not followed.
+- Stored provider keys are still synchronized to the selected server on chat
+  connection. Only connect to a server you trust with those keys; endpoint-scoped
+  credential consent is pending (see the remediation tracker).
 - No secrets are ever committed; CI release signing uses repository Secrets.
 
 ## Limitations (v0.1, honest)

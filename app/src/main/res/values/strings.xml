@@ -123,4 +123,5 @@
     <string name="env_service_failed">OpenCode server failed: %1$s</string>
     <string name="env_service_stopped">OpenCode server stopped</string>
     <string name="settings_server_restart">Start / restart server</string>
+    <string name="settings_remote_security">Remote hosts use HTTPS with certificate validation. Enter a hostname or IP, not a URL. For an HTTP server, use a secure tunnel to localhost.</string>
 </resources>
