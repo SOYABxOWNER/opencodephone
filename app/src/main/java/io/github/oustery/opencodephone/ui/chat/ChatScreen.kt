@@ -430,7 +430,10 @@ private fun ModelsSheet(vm: ChatViewModel, state: ChatUiState) {
                     }
                 }
                 items(
-                    provider.models.values.toList(),
+                    provider.models.values.sortedWith(
+                        compareBy<ModelEntry> { !io.github.oustery.opencodephone.core.model.OpenCodeCatalog.isFree(it) }
+                            .thenBy { it.name },
+                    ),
                     key = { "model:${provider.id.length}:${provider.id}:${it.id}" },
                 ) { model ->
                     ModelRow(
