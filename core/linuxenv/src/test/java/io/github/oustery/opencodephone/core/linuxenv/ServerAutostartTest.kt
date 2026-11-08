@@ -66,6 +66,26 @@ class ServerAutostartTest {
     }
 
     @Test
+    fun `manual stop cancels an in flight startup before stopping`() = runTest {
+        val enabled = MutableStateFlow(true)
+        val actions = mutableListOf<String>()
+        backgroundScope.launch {
+            observeServerLifecycle(MutableStateFlow(true),
+                MutableStateFlow(ServerLaunchConfig(4096, null, null)),
+                start = {
+                    actions += "starting"
+                    try { kotlinx.coroutines.awaitCancellation() }
+                    finally { actions += "cancelled" }
+                },
+                stop = { actions += "stop" }, enabled = enabled)
+        }
+        runCurrent()
+        enabled.value = false
+        runCurrent()
+        assertEquals(listOf("starting", "cancelled", "stop"), actions)
+    }
+
+    @Test
     fun `already installed on app launch starts without another bootstrap transition`() = runTest {
         val starts = mutableListOf<Int>()
         backgroundScope.launch {
