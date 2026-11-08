@@ -42,8 +42,8 @@ object OcJson {
         return PermissionRequest(
             sessionId = sessionId,
             permissionId = id,
-            type = obj.optString("type").orEmpty(),
-            title = obj.optString("title").orEmpty(),
+            type = obj.optString("permission") ?: obj.optString("type").orEmpty(),
+            title = obj.optString("title") ?: obj.optStringList("patterns").joinToString(", "),
         )
     }
 }

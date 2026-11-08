@@ -5,7 +5,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 
 /**
- * DTOs for the OpenCode 2 server HTTP API (`opencode serve`).
+ * DTOs for the OpenCode V1 server HTTP API (`opencode serve`).
  *
  * The server publishes an OpenAPI 3.1 spec at `/doc`; these models follow the
  * documented shapes but parse leniently (unknown keys are ignored) so minor

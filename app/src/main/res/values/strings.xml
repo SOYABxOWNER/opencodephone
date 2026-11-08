@@ -122,4 +122,5 @@
     <string name="env_service_running">OpenCode server active on port %1$d</string>
     <string name="env_service_failed">OpenCode server failed: %1$s</string>
     <string name="env_service_stopped">OpenCode server stopped</string>
+    <string name="settings_server_restart">Start / restart server</string>
 </resources>

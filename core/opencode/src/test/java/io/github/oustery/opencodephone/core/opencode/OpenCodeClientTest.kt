@@ -34,11 +34,11 @@ class OpenCodeClientTest {
     @Test
     fun `parses health`() = runBlocking {
         server.enqueue(
-            MockResponse().setBody("""{"healthy":true,"version":"2.2.6"}"""),
+            MockResponse().setBody("""{"healthy":true,"version":"1.19.5"}"""),
         )
         val health = client.health()
         assertEquals(true, health.healthy)
-        assertEquals("2.2.6", health.version)
+        assertEquals("1.19.5", health.version)
         val recorded = server.takeRequest()
         assertEquals("/global/health", recorded.path)
     }
@@ -90,7 +90,7 @@ class OpenCodeClientTest {
     @Test
     fun `basic auth header is attached when password configured`() = runBlocking {
         client.config = client.config.copy(username = "opencode", password = "secret")
-        server.enqueue(MockResponse().setBody("""{"healthy":true,"version":"x"}"""))
+        server.enqueue(MockResponse().setBody("""{"healthy":true,"version":"1.19.5"}"""))
         client.health()
         val recorded = server.takeRequest()
         assertNotNull(recorded.getHeader("Authorization"))
@@ -109,6 +109,43 @@ class OpenCodeClientTest {
             }
         }
         assertEquals(500, thrown?.code)
+    }
+
+    @Test
+    fun `HTML web fallback reports protocol mismatch not JSON parser internals`() = runBlocking {
+        server.enqueue(MockResponse().setHeader("Content-Type", "text/html").setBody("<!doctype html><title>OpenCode</title>"))
+        try {
+            client.health()
+            org.junit.Assert.fail("HTML cannot be health")
+        } catch (e: OpenCodeApiException) {
+            assertTrue(e.message!!.contains("received HTML"))
+            assertTrue(e.message!!.contains("V2"))
+        }
+        assertEquals("application/json", server.takeRequest().getHeader("Accept"))
+    }
+
+    @Test
+    fun `200 arbitrary JSON is not a healthy server`() = runBlocking {
+        for (body in listOf("{}", "{\"healthy\":false,\"version\":\"1.19.5\"}",
+            "{\"healthy\":true,\"version\":\"2.2.6\"}")) {
+            server.enqueue(MockResponse().setBody(body))
+            try {
+                client.health()
+                org.junit.Assert.fail("Invalid health accepted: $body")
+            } catch (_: OpenCodeApiException) { }
+        }
+    }
+
+    @Test
+    fun `invalid JSON has endpoint context without exposing response body`() = runBlocking {
+        server.enqueue(MockResponse().setBody("not-json-secret"))
+        try {
+            client.health()
+            org.junit.Assert.fail("Invalid JSON accepted")
+        } catch (e: OpenCodeApiException) {
+            assertTrue(e.message!!.contains("/global/health"))
+            assertTrue(!e.message!!.contains("secret"))
+        }
     }
 
     @Test

@@ -3,6 +3,7 @@ package io.github.oustery.opencodephone.ui.terminal
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.oustery.opencodephone.AppGraph
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -27,11 +28,14 @@ class TerminalViewModel(private val graph: AppGraph) : ViewModel() {
     private val _state = MutableStateFlow(TerminalUiState())
     val state: StateFlow<TerminalUiState> = _state
 
-    private var process: Process? = null
+    @Volatile private var process: Process? = null
+    private var shellJob: Job? = null
+    @Volatile private var generation = 0
+    private val processGuard = Any()
     private val lines = ArrayDeque<String>(MAX_LINES)
 
     fun start() {
-        if (process?.isAlive == true) return
+        if (shellJob?.isActive == true || process?.isAlive == true) return
         if (!graph.layout.isInstalled()) {
             // Without the rootfs proot only emits cryptic warnings; give a
             // human-readable hint instead of starting a doomed shell.
@@ -39,24 +43,42 @@ class TerminalViewModel(private val graph: AppGraph) : ViewModel() {
             _state.update { it.copy(alive = false) }
             return
         }
-        viewModelScope.launch(Dispatchers.IO) {
+        val run = ++generation
+        shellJob = viewModelScope.launch(Dispatchers.IO) {
             try {
                 val proc = graph.runtime.process(
-                    listOf("bash", "-i"),
+                    // stdin is a pipe, not a PTY. Interactive bash tries
+                    // tcsetpgrp() and emits the warnings seen on Android.
+                    listOf("/bin/bash", "--noprofile", "--norc", "-s"),
+                    env = mapOf("TERM" to "dumb", "PAGER" to "cat", "GIT_PAGER" to "cat"),
                     cwd = io.github.oustery.opencodephone.core.linuxenv.PRootCommand.WORKSPACE_MOUNT,
                     mergeOutput = true,
                 ).start()
-                process = proc
-                _state.update { it.copy(alive = true) }
+                val accepted = synchronized(processGuard) {
+                    if (run != generation) false else {
+                        process = proc
+                        _state.update { it.copy(alive = true) }
+                        true
+                    }
+                }
+                if (!accepted) {
+                    proc.destroy()
+                    return@launch
+                }
                 appendLine("── OpenCodePhone shell (Debian) ──")
                 proc.inputStream.bufferedReader().forEachLine { line ->
-                    appendLine(line)
+                    if (run == generation) appendLine(line)
                 }
-                appendLine("── shell exited ──")
-                _state.update { it.copy(alive = false) }
+                if (run == generation) {
+                    process = null
+                    appendLine("── shell exited ──")
+                    _state.update { it.copy(alive = false) }
+                }
             } catch (e: Exception) {
-                appendLine("── failed to start shell: ${e.message} ──")
-                _state.update { it.copy(alive = false) }
+                if (run == generation) {
+                    appendLine("── shell failed: ${e.message} ──")
+                    _state.update { it.copy(alive = false) }
+                }
             }
         }
     }
@@ -66,7 +88,8 @@ class TerminalViewModel(private val graph: AppGraph) : ViewModel() {
     fun send() {
         val text = _state.value.draft
         val proc = process ?: return
-        if (!proc.isAlive) return
+        if (!proc.isAlive || text.isBlank()) return
+        appendLine("$ $text")
         viewModelScope.launch(Dispatchers.IO) {
             runCatching {
                 proc.outputStream.write((text + "\n").toByteArray(Charsets.UTF_8))
@@ -83,17 +106,20 @@ class TerminalViewModel(private val graph: AppGraph) : ViewModel() {
 
     fun restart() {
         stop()
-        viewModelScope.launch(Dispatchers.IO) {
-            kotlinx.coroutines.delay(300)
-            start()
-        }
+        start()
     }
 
     fun stop() {
-        runCatching {
-            process?.destroy()
+        val old = synchronized(processGuard) {
+            generation++
+            val proc = process
+            process = null
+            _state.update { it.copy(alive = false) }
+            proc
         }
-        process = null
+        shellJob?.cancel()
+        shellJob = null
+        runCatching { old?.destroy() }
     }
 
     private fun appendLine(line: String) {

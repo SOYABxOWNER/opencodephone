@@ -47,6 +47,8 @@ class PRootCommandTest {
     fun `environment contains path and dns-safe flags`() {
         val env = PRootCommand.baseEnvironment(File("/tmp/proot-tmp"))
         assertEquals("/root", env["HOME"])
+        assertEquals("/root/.local/share/opencodephone-v1", env["XDG_DATA_HOME"])
+        assertEquals("/root/.config/opencodephone-v1", env["XDG_CONFIG_HOME"])
         assertTrue(env["PATH"]!!.contains("/usr/local/bin"))
         assertEquals("1", env["PROOT_NO_SECCOMP"])
         assertEquals("glibc.pthread.rseq=0", env["GLIBC_TUNABLES"])

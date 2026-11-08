@@ -68,9 +68,9 @@ object Pins {
         "arm" to "sha256:4220a655ef92cf9f4bea07e6dc36b55193268feb1176b54e955e05027cf18af2",
     )
 
-    /** OpenCode 2 CLI version installed into the environment at bootstrap. */
-    const val OPENCODE_VERSION: String = "2.2.6"
-    const val OPENCODE_NPM_SCOPE: String = "@opencode"
+    /** OpenCode V1 CLI version matching the HTTP client, installed into the environment at bootstrap. */
+    const val OPENCODE_VERSION: String = "1.19.5"
+    const val OPENCODE_NPM_PACKAGE_PREFIX: String = "opencode-"
 
     /** Android-compatible static PRoot (Termux fork; see tools/build_proot.py). */
     const val PROOT_VERSION: String = "termux-52d65a4dc140"

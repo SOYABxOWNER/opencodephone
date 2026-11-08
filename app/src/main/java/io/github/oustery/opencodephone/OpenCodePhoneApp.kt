@@ -12,6 +12,17 @@ import io.github.oustery.opencodephone.core.settings.SettingsStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import io.github.oustery.opencodephone.core.linuxenv.ServerLaunchConfig
+import io.github.oustery.opencodephone.core.linuxenv.observeServerLifecycle
+import io.github.oustery.opencodephone.core.model.BootstrapPhase
+import io.github.oustery.opencodephone.core.settings.ServerConfig
 
 /**
  * Manual dependency graph — the app is small enough that a DI framework
@@ -29,7 +40,46 @@ class AppGraph(context: Application) {
 
     val runtime: EnvironmentRuntime = EnvironmentRuntime(layout)
 
-    val bootstrap: BootstrapManager = BootstrapManager(layout, runtime, appScope)
+    val bootstrap: BootstrapManager = BootstrapManager(layout, runtime, appScope, settings.opencodeVersionPin())
+
+    private val _serverConfiguration = MutableStateFlow(settings.serverConfig())
+    val serverConfiguration: StateFlow<ServerConfig> = _serverConfiguration
+
+    init {
+        appScope.launch {
+            observeServerLifecycle(
+                ready = bootstrap.state.map { it.phase == BootstrapPhase.READY }.distinctUntilChanged(),
+                configuration = serverConfiguration.map { cfg ->
+                    if (cfg.mode == ServerMode.LOCAL) ServerLaunchConfig(cfg.port, cfg.username, cfg.password) else null
+                }.distinctUntilChanged(),
+                start = { ensureLocalServer() },
+                stop = {
+                    withContext(Dispatchers.IO) { runtime.stopServer() }
+                    if (bootstrap.state.value.phase == BootstrapPhase.READY) EnvService.stop(appContext)
+                },
+            )
+        }
+    }
+
+    suspend fun ensureLocalServer(restart: Boolean = false) {
+        val cfg = settings.serverConfig()
+        if (cfg.mode != ServerMode.LOCAL) return
+        // Establish foreground importance before launching the child, not only
+        // after health becomes green (which used to leave startup unprotected).
+        try {
+            check(bootstrap.state.value.phase == BootstrapPhase.READY) { "Finish environment setup before starting the server." }
+            EnvService.start(appContext)
+            runtime.startServer(cfg.port, cfg.password, cfg.username, restart = restart)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            runtime.reportServerFailure("Cannot start local server: ${e.message}")
+        }
+    }
+
+    fun restartLocalServer() {
+        appScope.launch { ensureLocalServer(restart = true) }
+    }
 
     @Volatile
     var client: OpenCodeClient = OpenCodeClient(config = buildClientConfig(settings))
@@ -37,6 +87,7 @@ class AppGraph(context: Application) {
 
     fun refreshClient() {
         client = OpenCodeClient(config = buildClientConfig(settings))
+        _serverConfiguration.value = settings.serverConfig()
     }
 
     private fun buildClientConfig(settings: SettingsStore): ConnectionConfig {

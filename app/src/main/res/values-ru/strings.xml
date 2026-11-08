@@ -122,4 +122,5 @@
     <string name="env_service_running">Сервер OpenCode активен на порту %1$d</string>
     <string name="env_service_failed">Ошибка сервера OpenCode: %1$s</string>
     <string name="env_service_stopped">Сервер OpenCode остановлен</string>
+    <string name="settings_server_restart">Запустить / перезапустить сервер</string>
 </resources>

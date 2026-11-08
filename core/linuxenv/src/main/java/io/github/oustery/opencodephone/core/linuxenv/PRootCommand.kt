@@ -57,6 +57,12 @@ object PRootCommand {
 
     fun baseEnvironment(tmpDir: File): Map<String, String> = mapOf(
         "HOME" to "/root",
+        // V2 uses an incompatible database/config layout. Preserve its data
+        // but keep the supported V1 CLI in an isolated XDG namespace.
+        "XDG_DATA_HOME" to "/root/.local/share/opencodephone-v1",
+        "XDG_STATE_HOME" to "/root/.local/state/opencodephone-v1",
+        "XDG_CACHE_HOME" to "/root/.cache/opencodephone-v1",
+        "XDG_CONFIG_HOME" to "/root/.config/opencodephone-v1",
         "PATH" to "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
         "TERM" to "xterm-256color",
         "LANG" to "C.UTF-8",

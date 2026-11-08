@@ -4,9 +4,12 @@ Status: accepted (2026-11-08)
 
 ## Decision
 
-The v0.1 terminal runs a persistent `bash -i` inside the environment through
+The v0.1 terminal runs a persistent `bash --noprofile --norc -s` inside the environment through
 pipes (stdout/stderr merged into a console buffer, commands written to stdin).
 No JNI/pty layer in this release.
+
+The non-interactive pipe shell avoids TTY/job-control warnings; submitted
+commands are echoed by the UI. See ADR-011 for the correction.
 
 ## Rationale
 

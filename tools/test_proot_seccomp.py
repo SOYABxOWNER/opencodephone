@@ -125,6 +125,22 @@ class PRootSeccompTest(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("thread-ok", result.stdout)
 
+    def test_pipe_shell_runs_commands_without_job_control_or_tty(self):
+        with tempfile.TemporaryDirectory(prefix="pipe-shell-") as tmp:
+            result = subprocess.run(
+                [str(PROOT), "-0", "-r", "/", "/bin/bash", "--noprofile", "--norc", "-s"],
+                input="cd /tmp\npwd\nprintf 'shell-ok\\n'\n",
+                env=dict(os.environ, PROOT_NO_SECCOMP="1", PROOT_TMP_DIR=tmp,
+                         GLIBC_TUNABLES="glibc.pthread.rseq=0"),
+                preexec_fn=block_android_incompatible_syscalls,
+                capture_output=True, text=True, timeout=20,
+            )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("/tmp", result.stdout)
+        self.assertIn("shell-ok", result.stdout)
+        self.assertNotIn("job control", result.stderr)
+        self.assertNotIn("terminal process group", result.stderr)
+
     def test_app_environment_runs_probe_and_shell_children(self):
         # Read the production setting so deleting/changing it fails this test.
         setting = re.search(r'"GLIBC_TUNABLES" to "([^"]+)"',

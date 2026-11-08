@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -75,25 +76,18 @@ fun AppRoot(graph: AppGraph) {
         }
     }
 
-    // Keep the environment alive in background through the foreground service.
-    LaunchedEffect(serverState) {
-        if (serverState is ServerState.Running) {
-            EnvService.start(context)
+    // Autostart is owned by AppGraph (independent of navigation). Keep
+    // setup and server startup foregrounded, but never stop the service in
+    // the READY -> Starting transition.
+    LaunchedEffect(bootstrapState.phase, serverState) {
+        when {
+            serverState is ServerState.Starting || serverState is ServerState.Running -> EnvService.start(context)
+            bootstrapState.phase == BootstrapPhase.FAILED || serverState is ServerState.Failed -> EnvService.stop(context)
+            bootstrapState.phase != BootstrapPhase.READY -> EnvService.start(context)
         }
     }
 
-    // Hold the foreground service while setup is running so Android does not
-    // kill the bootstrap (phantom process killer, cached-app freezer).
-    LaunchedEffect(bootstrapState.phase) {
-        when (bootstrapState.phase) {
-            BootstrapPhase.READY, BootstrapPhase.FAILED -> {
-                if (serverState !is ServerState.Running) EnvService.stop(context)
-            }
-            else -> EnvService.start(context)
-        }
-    }
-
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize().imePadding()) {
         val isWide = maxWidth >= 600.dp
         if (isWide) {
             Row(modifier = Modifier.fillMaxSize()) {

@@ -69,9 +69,7 @@ class EnvService : LifecycleService() {
     override fun onDestroy() {
         // The service being torn down means the user no longer needs the env;
         // stop the child server so no orphan processes linger.
-        if (!graph.runtime.isServerAlive()) {
-            graph.runtime.stopServer()
-        }
+        if (graph.runtime.isServerAlive()) graph.runtime.stopServer()
         super.onDestroy()
     }
 

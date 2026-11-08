@@ -21,10 +21,13 @@ import java.util.zip.GZIPInputStream
 /**
  * Installs the OpenCode CLI into the Debian environment without Node.js:
  * the binary is fetched from the npm registry package
- * `@opencode/cli-<target>@<version>` and integrity-checked against the
+ * `opencode-<target>@<version>` and integrity-checked against the
  * registry SRI (sha512).
  */
-class OpencodeInstaller(private val callFactory: Call.Factory) {
+class OpencodeInstaller(
+    private val callFactory: Call.Factory,
+    private val registryBaseUrl: String = "https://registry.npmjs.org",
+) {
 
     private val json = OcJson.lenient
 
@@ -34,29 +37,18 @@ class OpencodeInstaller(private val callFactory: Call.Factory) {
         val integrity: String?,
     )
 
-    /**
-     * Resolve the package metadata, trying the primary scope first and
-     * falling back to the legacy `@opencode-ai` scope.
-     */
+    /** The client implements OpenCode V1, not the unrelated V2 API. */
     suspend fun resolvePackage(target: String, version: String): PackageInfo {
-        val scopes = listOf(Pins.OPENCODE_NPM_SCOPE, "@opencode-ai")
-        var lastError: Exception? = null
-        for (scope in scopes) {
-            val url = "https://registry.npmjs.org/$scope%2fcli-$target/$version"
-            try {
-                val body = get(url)
-                val obj = json.parseToJsonElement(body) as? JsonObject
-                    ?: error("unexpected npm metadata shape")
-                val dist = obj.optObject("dist") ?: error("npm metadata missing dist")
-                val tarball = dist.optString("tarball")
-                    ?: error("npm metadata missing dist.tarball")
-                return PackageInfo(tarball, dist.optString("integrity"))
-            } catch (e: Exception) {
-                lastError = e
-            }
+        require(version.matches(Regex("1\\.\\d+\\.\\d+([-.][A-Za-z0-9.-]+)?"))) {
+            "This app supports OpenCode V1. Choose a 1.x CLI version (recommended: ${Pins.OPENCODE_VERSION})."
         }
-        throw IllegalStateException(
-            "OpenCode package not found for target=$target version=$version: ${lastError?.message}",
+        val url = "$registryBaseUrl/${Pins.OPENCODE_NPM_PACKAGE_PREFIX}$target/$version"
+        val obj = json.parseToJsonElement(get(url)) as? JsonObject
+            ?: error("Unexpected npm metadata shape")
+        val dist = obj.optObject("dist") ?: error("npm metadata missing dist")
+        return PackageInfo(
+            dist.optString("tarball") ?: error("npm metadata missing dist.tarball"),
+            dist.optString("integrity") ?: error("npm metadata missing integrity"),
         )
     }
 
@@ -118,9 +110,18 @@ class OpencodeInstaller(private val callFactory: Call.Factory) {
                 val name = entry.name.substringAfterLast('/')
                 if (name == "opencode" && (entry.mode and 0b001_000_000) != 0) {
                     outBin.parentFile?.mkdirs()
-                    if (outBin.exists()) outBin.delete()
-                    FileOutputStream(outBin).use { tar.copyTo(it) }
-                    outBin.setExecutable(true, false)
+                    val staging = File(outBin.parentFile, "${outBin.name}.new")
+                    try {
+                        FileOutputStream(staging).use { tar.copyTo(it) }
+                        check(staging.setExecutable(true, false)) { "Cannot mark CLI executable" }
+                        java.nio.file.Files.move(
+                            staging.toPath(), outBin.toPath(),
+                            java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                        )
+                    } finally {
+                        staging.delete()
+                    }
                     found = outBin
                     break
                 }

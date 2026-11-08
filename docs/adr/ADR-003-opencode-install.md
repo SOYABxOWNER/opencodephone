@@ -1,3 +1,6 @@
+> Superseded by ADR-011: install V1 `opencode-<target>@1.19.5`, not the
+> API-incompatible V2 CLI. The statements below describe the original decision.
+
 # ADR-003 — Installing OpenCode and pinning integrity
 
 Status: accepted (2026-11-08)

@@ -124,6 +124,15 @@ fun SettingsScreen(graph: AppGraph) {
                                 tone = OcChipTone.NEUTRAL,
                             )
                         }
+                        if (state.server.mode == ServerMode.LOCAL) {
+                            OutlinedButton(onClick = { vm.restartServer() }) {
+                                Text(stringResource(R.string.settings_server_restart))
+                            }
+                            state.serverError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                            if (state.serverLog.isNotBlank()) {
+                                Text(state.serverLog.takeLast(3000), style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
                         state.connectionTest?.let {
                             Text(
                                 it,
@@ -241,7 +250,7 @@ fun SettingsScreen(graph: AppGraph) {
                 Card(shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         OcInfoRow(stringResource(R.string.settings_about_app), stringResource(R.string.app_name))
-                        OcInfoRow(stringResource(R.string.settings_about_version), "0.1.0")
+                        OcInfoRow(stringResource(R.string.settings_about_version), io.github.oustery.opencodephone.BuildConfig.VERSION_NAME)
                         OcInfoRow(stringResource(R.string.settings_about_license), "MIT")
                         OcInfoRow(
                             stringResource(R.string.settings_about_repo),
