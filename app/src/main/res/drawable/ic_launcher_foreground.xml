@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <group>
+        <path android:fillColor="@color/ic_launcher_glyph"
+            android:pathData="M37,35 L55,54 L37,73 L42.5,78.5 L66,54 L42.5,29.5 Z"/>
+        <path android:fillColor="@color/ic_launcher_glyph"
+            android:pathData="M58,71.5 L79,71.5 L79,78.5 L58,78.5 Z"/>
+    </group>
+</vector>

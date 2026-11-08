@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OpenCodePhone</string>
+
+    <!-- Tabs -->
+    <string name="tab_chat">Чат</string>
+    <string name="tab_files">Файлы</string>
+    <string name="tab_terminal">Терминал</string>
+    <string name="tab_settings">Настройки</string>
+
+    <!-- Common actions -->
+    <string name="action_cancel">Отмена</string>
+    <string name="action_save">Сохранить</string>
+    <string name="action_create">Создать</string>
+    <string name="action_delete">Удалить</string>
+    <string name="action_copy">Копировать</string>
+    <string name="action_dismiss">Скрыть</string>
+
+    <!-- Bootstrap -->
+    <string name="bootstrap_subtitle">Локальный ИИ-агент OpenCode на вашем телефоне, внутри окружения Debian</string>
+    <string name="bootstrap_preparing">Подготовка окружения…</string>
+    <string name="bootstrap_failed_title">Ошибка установки</string>
+    <string name="bootstrap_retry">Повторить установку</string>
+    <string name="bootstrap_note">При первой настройке скачиваются Debian (~50 МБ) и OpenCode CLI (~40 МБ)</string>
+    <string name="bootstrap_step_rootfs">Загрузка корневой файловой системы Debian</string>
+    <string name="bootstrap_step_extract">Распаковка файловой системы</string>
+    <string name="bootstrap_step_tools">Установка инструментов (git, curl)</string>
+    <string name="bootstrap_step_opencode">Установка OpenCode CLI</string>
+    <string name="bootstrap_step_configure">Настройка окружения</string>
+    <string name="bootstrap_step_failed">ошибка</string>
+
+    <!-- Chat -->
+    <string name="chat_sessions">Сессии</string>
+    <string name="chat_pick_model">Выбрать модель</string>
+    <string name="chat_connecting">Подключение к opencode…</string>
+    <string name="chat_offline_title">Сервер недоступен</string>
+    <string name="chat_offline_body">Сервер OpenCode не запущен. Дождитесь старта окружения или проверьте настройки.</string>
+    <string name="chat_offline_settings">Проверить настройки</string>
+    <string name="chat_error_title">Ошибка соединения</string>
+    <string name="chat_connected">opencode %1$s</string>
+    <string name="chat_empty_title">Новый диалог</string>
+    <string name="chat_empty_body">Попросите агента объяснить код, добавить функцию или исправить ошибку — он редактирует файлы и выполняет команды в вашей рабочей папке.</string>
+    <string name="chat_permission_title">Запрошено разрешение: %1$s</string>
+    <string name="chat_permission_once">Разрешить раз</string>
+    <string name="chat_permission_always">Разрешить всегда</string>
+    <string name="chat_permission_deny">Отклонить</string>
+    <string name="chat_input_hint">Спросите агента…</string>
+    <string name="chat_send">Отправить</string>
+    <string name="chat_stop">Остановить</string>
+    <string name="chat_sessions_empty">Сессий пока нет</string>
+    <string name="chat_session_untitled">Сессия без названия</string>
+    <string name="chat_new_session">Новая сессия</string>
+    <string name="chat_models_title">Модели</string>
+    <string name="chat_models_hint">Провайдерам нужен API-ключ в настройках, прежде чем их можно использовать.</string>
+    <string name="chat_models_empty">Сервер пока не сообщил ни о одном провайдере.</string>
+    <string name="chat_provider_connected">подключён</string>
+    <string name="chat_provider_no_key">нет ключа</string>
+    <string name="chat_model_selected">выбрана</string>
+
+    <!-- Files -->
+    <string name="files_clone">Клонировать</string>
+    <string name="files_new_file">Новый файл</string>
+    <string name="files_new_file_hint">путь/имя.txt (слэш в конце создаёт папку)</string>
+    <string name="files_empty_title">Пустая рабочая папка</string>
+    <string name="files_empty_body">Клонируйте git-репозиторий или создайте файл, чтобы начать работу с агентом.</string>
+    <string name="files_clone_title">Клонировать репозиторий</string>
+    <string name="git_clean">чисто</string>
+    <string name="git_changes">%1$d изм.</string>
+    <string name="git_commit_hint">Сообщение коммита</string>
+    <string name="git_commit">Коммит</string>
+    <string name="git_push">Push</string>
+
+    <!-- Terminal -->
+    <string name="terminal_clear">Очистить</string>
+    <string name="terminal_restart">Перезапуск шелла</string>
+    <string name="terminal_input_hint">команда шелла…</string>
+    <string name="terminal_run">Выполнить</string>
+
+    <!-- Settings -->
+    <string name="settings_server_header">Сервер OpenCode</string>
+    <string name="settings_server_local">Локальный</string>
+    <string name="settings_server_remote">Удалённый</string>
+    <string name="settings_server_host">Хост</string>
+    <string name="settings_server_port">Порт</string>
+    <string name="settings_server_user">Пользователь</string>
+    <string name="settings_server_password">Пароль (необязательно)</string>
+    <string name="settings_server_test">Проверить соединение</string>
+    <string name="settings_providers_header">ИИ-провайдеры</string>
+    <string name="settings_providers_hint">API-ключи хранятся шифрованно и передаются серверу opencode при подключении.</string>
+    <string name="settings_providers_empty">Ключи провайдеров не настроены.</string>
+    <string name="settings_providers_add">Добавить ключ</string>
+    <string name="settings_providers_custom">Свой провайдер…</string>
+    <string name="settings_providers_id">ID провайдера</string>
+    <string name="settings_providers_key">API-ключ</string>
+    <string name="settings_git_header">Git</string>
+    <string name="settings_git_name">Имя пользователя Git</string>
+    <string name="settings_git_email">Email Git</string>
+    <string name="settings_git_token">Токен GitHub (PAT)</string>
+    <string name="settings_git_hint">Токен используется для клонирования и push в приватные GitHub-репозитории.</string>
+    <string name="settings_env_header">Окружение Linux</string>
+    <string name="settings_env_bootstrap">Установка</string>
+    <string name="settings_env_workspace">Рабочая папка</string>
+    <string name="settings_env_pin">Версия OpenCode</string>
+    <string name="settings_env_pin_hint">Версия будет установлена при следующем сбросе окружения. Изменения применяются после переустановки.</string>
+    <string name="settings_env_reinstall">Переустановить окружение</string>
+    <string name="settings_env_reinstall_confirm">Это удалит окружение Debian (файлы рабочей папки сохранятся) и повторит полную установку. Продолжить?</string>
+    <string name="settings_about_header">О приложении</string>
+    <string name="settings_about_app">Приложение</string>
+    <string name="settings_about_version">Версия</string>
+    <string name="settings_about_license">Лицензия</string>
+    <string name="settings_about_repo">Репозиторий</string>
+    <string name="settings_about_note">OpenCodePhone — независимый клиент, запускающий OpenCode локально на вашем устройстве. OpenCode — торговая марка его владельцев.</string>
+
+    <!-- Env service -->
+    <string name="env_service_channel">Окружение</string>
+    <string name="env_service_title">Окружение OpenCodePhone</string>
+    <string name="env_service_starting">Запуск сервера OpenCode…</string>
+    <string name="env_service_running">Сервер OpenCode активен на порту %1$d</string>
+    <string name="env_service_failed">Ошибка сервера OpenCode: %1$s</string>
+    <string name="env_service_stopped">Сервер OpenCode остановлен</string>
+</resources>

@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Unit tests + per-ABI APKs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle with caching
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run unit tests
+        run: ./gradlew test --stacktrace
+
+      - name: Build per-architecture debug APKs
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Rename APKs
+        run: |
+          cd app/build/outputs/apk/debug
+          for f in app-*-debug.apk; do
+            abi="${f#app-}"
+            abi="${abi%-debug.apk}"
+            mv "$f" "OpenCodePhone-debug-${abi}.apk"
+          done
+          ls -la
+
+      - name: Upload APK artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencodephone-debug-apks
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14

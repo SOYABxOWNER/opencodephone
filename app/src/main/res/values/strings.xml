@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OpenCodePhone</string>
+
+    <!-- Tabs -->
+    <string name="tab_chat">Chat</string>
+    <string name="tab_files">Files</string>
+    <string name="tab_terminal">Terminal</string>
+    <string name="tab_settings">Settings</string>
+
+    <!-- Common actions -->
+    <string name="action_cancel">Cancel</string>
+    <string name="action_save">Save</string>
+    <string name="action_create">Create</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_copy">Copy</string>
+    <string name="action_dismiss">Dismiss</string>
+
+    <!-- Bootstrap -->
+    <string name="bootstrap_subtitle">Local OpenCode AI coding agent on your phone, inside a Debian environment</string>
+    <string name="bootstrap_preparing">Preparing environment…</string>
+    <string name="bootstrap_failed_title">Setup failed</string>
+    <string name="bootstrap_retry">Retry setup</string>
+    <string name="bootstrap_note">First-time setup downloads Debian (~50 MB) and the OpenCode CLI (~40 MB)</string>
+    <string name="bootstrap_step_rootfs">Download Debian root filesystem</string>
+    <string name="bootstrap_step_extract">Extract root filesystem</string>
+    <string name="bootstrap_step_tools">Install tools (git, curl)</string>
+    <string name="bootstrap_step_opencode">Install OpenCode CLI</string>
+    <string name="bootstrap_step_configure">Configure environment</string>
+    <string name="bootstrap_step_failed">failed</string>
+
+    <!-- Chat -->
+    <string name="chat_sessions">Sessions</string>
+    <string name="chat_pick_model">Pick a model</string>
+    <string name="chat_connecting">Connecting to opencode…</string>
+    <string name="chat_offline_title">Server is offline</string>
+    <string name="chat_offline_body">The OpenCode server is not running. Wait for the environment to start or check Settings.</string>
+    <string name="chat_offline_settings">Check settings</string>
+    <string name="chat_error_title">Connection error</string>
+    <string name="chat_connected">opencode %1$s</string>
+    <string name="chat_empty_title">New conversation</string>
+    <string name="chat_empty_body">Ask the agent to explain the codebase, add a feature or fix a bug — it edits files and runs commands inside your workspace.</string>
+    <string name="chat_permission_title">Permission requested: %1$s</string>
+    <string name="chat_permission_once">Allow once</string>
+    <string name="chat_permission_always">Allow always</string>
+    <string name="chat_permission_deny">Deny</string>
+    <string name="chat_input_hint">Ask the agent…</string>
+    <string name="chat_send">Send</string>
+    <string name="chat_stop">Stop</string>
+    <string name="chat_sessions_empty">No sessions yet</string>
+    <string name="chat_session_untitled">Untitled session</string>
+    <string name="chat_new_session">New session</string>
+    <string name="chat_models_title">Models</string>
+    <string name="chat_models_hint">Providers need an API key in Settings before they can be used.</string>
+    <string name="chat_models_empty">No providers reported by the server yet.</string>
+    <string name="chat_provider_connected">connected</string>
+    <string name="chat_provider_no_key">no key</string>
+    <string name="chat_model_selected">selected</string>
+
+    <!-- Files -->
+    <string name="files_clone">Clone</string>
+    <string name="files_new_file">New file</string>
+    <string name="files_new_file_hint">path/name.txt (trailing / creates a folder)</string>
+    <string name="files_empty_title">Empty workspace</string>
+    <string name="files_empty_body">Clone a git repository or create a file to start working with the agent.</string>
+    <string name="files_clone_title">Clone repository</string>
+    <string name="git_clean">clean</string>
+    <string name="git_changes">%1$d changed</string>
+    <string name="git_commit_hint">Commit message</string>
+    <string name="git_commit">Commit</string>
+    <string name="git_push">Push</string>
+
+    <!-- Terminal -->
+    <string name="terminal_clear">Clear</string>
+    <string name="terminal_restart">Restart shell</string>
+    <string name="terminal_input_hint">shell command…</string>
+    <string name="terminal_run">Run</string>
+
+    <!-- Settings -->
+    <string name="settings_server_header">OpenCode server</string>
+    <string name="settings_server_local">Local</string>
+    <string name="settings_server_remote">Remote</string>
+    <string name="settings_server_host">Host</string>
+    <string name="settings_server_port">Port</string>
+    <string name="settings_server_user">User</string>
+    <string name="settings_server_password">Password (optional)</string>
+    <string name="settings_server_test">Test connection</string>
+    <string name="settings_providers_header">AI providers</string>
+    <string name="settings_providers_hint">API keys are stored encrypted and injected into the opencode server on connect.</string>
+    <string name="settings_providers_empty">No provider keys configured.</string>
+    <string name="settings_providers_add">Add provider key</string>
+    <string name="settings_providers_custom">Custom provider…</string>
+    <string name="settings_providers_id">Provider ID</string>
+    <string name="settings_providers_key">API key</string>
+    <string name="settings_git_header">Git</string>
+    <string name="settings_git_name">Git user name</string>
+    <string name="settings_git_email">Git email</string>
+    <string name="settings_git_token">GitHub token (PAT)</string>
+    <string name="settings_git_hint">The token is used for cloning and pushing private GitHub repositories.</string>
+    <string name="settings_env_header">Linux environment</string>
+    <string name="settings_env_bootstrap">Bootstrap</string>
+    <string name="settings_env_workspace">Workspace</string>
+    <string name="settings_env_pin">OpenCode version pin</string>
+    <string name="settings_env_pin_hint">Version installed at the next environment reset. Changes apply after reinstall.</string>
+    <string name="settings_env_reinstall">Reinstall environment</string>
+    <string name="settings_env_reinstall_confirm">This deletes the Debian environment (workspace files are kept) and repeats the full setup. Continue?</string>
+    <string name="settings_about_header">About</string>
+    <string name="settings_about_app">Application</string>
+    <string name="settings_about_version">Version</string>
+    <string name="settings_about_license">License</string>
+    <string name="settings_about_repo">Repository</string>
+    <string name="settings_about_note">OpenCodePhone is an independent client that runs OpenCode locally on your device. OpenCode is a trademark of its respective owners.</string>
+
+    <!-- Env service -->
+    <string name="env_service_channel">Environment</string>
+    <string name="env_service_title">OpenCodePhone environment</string>
+    <string name="env_service_starting">Starting OpenCode server…</string>
+    <string name="env_service_running">OpenCode server active on port %1$d</string>
+    <string name="env_service_failed">OpenCode server failed: %1$s</string>
+    <string name="env_service_stopped">OpenCode server stopped</string>
+</resources>
