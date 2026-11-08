@@ -22,9 +22,14 @@ object PRootCommand {
         command: List<String>,
         cwd: String = "/root",
         extraBinds: List<Pair<String, String>> = emptyList(),
+        verbosity: Int = 0,
     ): List<String> = buildList {
         add(prootBin.absolutePath)
         add("--kill-on-exit")
+        if (verbosity > 0) {
+            add("-v")
+            add(verbosity.toString())
+        }
         add("-r")
         add(rootfsDir.absolutePath)
         add("-w")
@@ -58,6 +63,10 @@ object PRootCommand {
         "TMPDIR" to "/tmp",
         "SHELL" to "/bin/bash",
         "PROOT_NO_SECCOMP" to "1",
+        // Debian glibc registers rseq before main(), even for /bin/true.
+        // Android's inherited app seccomp filter can reject it with SIGSYS;
+        // PROOT_NO_SECCOMP disables only proot's own filter, not Android's.
+        "GLIBC_TUNABLES" to "glibc.pthread.rseq=0",
         "PROOT_TMP_DIR" to tmpDir.absolutePath,
     )
 }

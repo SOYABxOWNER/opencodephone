@@ -5,7 +5,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -58,6 +57,7 @@ class EnvironmentRuntime(
         env: Map<String, String> = emptyMap(),
         cwd: String = "/root",
         mergeOutput: Boolean = false,
+        prootVerbosity: Int = 0,
     ): ProcessBuilder {
         val argv = PRootCommand.build(
             rootfsDir = layout.rootfsDir,
@@ -67,6 +67,7 @@ class EnvironmentRuntime(
             hostsFile = layout.hostsFile,
             command = command,
             cwd = cwd,
+            verbosity = prootVerbosity,
         )
         val pb = ProcessBuilder(argv)
         val environ = pb.environment()
@@ -85,8 +86,9 @@ class EnvironmentRuntime(
         cwd: String = "/root",
         timeoutMs: Long = 10 * 60_000,
         onLine: ((String) -> Unit)? = null,
+        prootVerbosity: Int = 0,
     ): ExecResult = withContext(Dispatchers.IO) {
-        val proc = process(command, env, cwd, mergeOutput = true).start()
+        val proc = process(command, env, cwd, mergeOutput = true, prootVerbosity = prootVerbosity).start()
         val output = StringBuilder()
         val reader = Thread {
             proc.inputStream.bufferedReader().forEachLine { line ->
@@ -95,10 +97,9 @@ class EnvironmentRuntime(
             }
         }
         reader.start()
-        val finished = withTimeoutOrNull(timeoutMs) {
-            proc.waitFor()
-            true
-        } ?: false
+        // waitFor() without a deadline blocks the IO thread and cannot be
+        // interrupted by withTimeoutOrNull. Use the native timed wait instead.
+        val finished = proc.waitFor(timeoutMs, TimeUnit.MILLISECONDS)
         if (!finished) {
             proc.destroy()
             proc.waitFor(3, TimeUnit.SECONDS)

@@ -151,11 +151,19 @@ class BootstrapManager(
             // process killers, broken extraction) are reported clearly.
             setState(BootstrapPhase.EXTRACTING_ROOTFS, "Checking the environment")
             log("probe: running /bin/true inside the environment")
-            val probe = runtime.exec(listOf("/bin/true"), timeoutMs = 60_000)
+            val probe = runtime.exec(
+                listOf("/bin/true"),
+                timeoutMs = 60_000,
+                // Level 1 reports terminating signals; without it proot can
+                // silently return 255 for SIGSYS as well as SIGKILL.
+                prootVerbosity = 1,
+                onLine = { log("probe: $it") },
+            )
             if (probe.exitCode != 0) {
-                log("probe failed: exit ${probe.exitCode}, output: ${probe.output.take(200)}")
+                log("probe failed: exit ${probe.exitCode}, output: ${probe.output.takeLast(2000)}")
                 error(
-                    "Environment self-check failed (exit ${probe.exitCode}). " + explainExitCode(probe.exitCode),
+                    "Environment self-check failed (exit ${probe.exitCode}). " + explainExitCode(probe.exitCode) +
+                        "\n" + probe.output.takeLast(2000),
                 )
             }
             log("probe ok")
@@ -279,15 +287,15 @@ class BootstrapManager(
 
         /**
          * Human-readable explanation for a guest command exit code. proot
-         * exits with the last guest exit status, or 255 when every guest
-         * process was killed by a signal before exiting normally.
+         * reports the last normal guest exit status. Its initial -1 becomes
+         * 255 if no guest exits normally; this does not identify the signal
+         * or prove Android's phantom process killer was involved.
          */
         fun explainExitCode(code: Int): String = when (code) {
-            255 -> "Every process inside the environment was killed by the OS before it could " +
-                "exit normally. On Android 12+ this is usually the phantom process killer or " +
-                "aggressive battery saving: keep the app on screen during setup, disable " +
-                "battery optimization for OpenCodePhone, or (developer options) disable " +
-                "child process restrictions."
+            255 -> "PRoot did not report a normal guest exit. This can result from a blocked " +
+                "syscall (SIGSYS/seccomp), a crash, or Android killing the process. " +
+                "Check the probe log for the terminating signal. For SIGKILL, keep the app " +
+                "on screen and disable battery optimization; battery settings do not fix SIGSYS."
             137 -> "The process was killed (SIGKILL), most likely by Android to save memory. " +
                 "Close other apps and try again."
             126 -> "A binary exists but cannot be executed — file permissions inside the " +
