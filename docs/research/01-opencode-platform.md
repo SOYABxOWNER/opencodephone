@@ -1,3 +1,10 @@
+> **Correction (ADR-011):** the API compatibility claims below were incorrect.
+> Running the actual 2.2.6 CLI showed `/global/health` returning the HTML SPA.
+> V2 uses a different API/auth protocol. This app supports V1 (1.19.5), installed
+> from `opencode-<target>` packages. The original research is retained below as
+> historical context, not as an implementation reference. See ADR-011 for the
+> reproduced evidence and non-destructive migration plan.
+
 # Research 01 — OpenCode platform (V2)
 
 Date: 2026-11-08. Purpose: establish verified facts about OpenCode before

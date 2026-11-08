@@ -24,6 +24,8 @@ data class SettingsUiState(
     val connectionTest: String? = null,
     val bootstrap: BootstrapState = BootstrapState(),
     val serverStateLabel: String = "",
+    val serverError: String? = null,
+    val serverLog: String = "",
     val showAddProvider: Boolean = false,
     val showReinstallConfirm: Boolean = false,
 )
@@ -46,6 +48,7 @@ class SettingsViewModel(private val graph: AppGraph) : ViewModel() {
             graph.runtime.serverState.collect { serverState ->
                 _state.update {
                     it.copy(
+                        serverError = (serverState as? ServerState.Failed)?.message,
                         serverStateLabel = when (serverState) {
                             is ServerState.Running -> "opencode serve :${serverState.port}"
                             is ServerState.Starting -> "starting…"
@@ -56,7 +59,12 @@ class SettingsViewModel(private val graph: AppGraph) : ViewModel() {
                 }
             }
         }
+        viewModelScope.launch {
+            graph.runtime.serverLog.collect { log -> _state.update { it.copy(serverLog = log) } }
+        }
     }
+
+    fun restartServer() = graph.restartLocalServer()
 
     fun reload() {
         _state.update {
@@ -73,6 +81,7 @@ class SettingsViewModel(private val graph: AppGraph) : ViewModel() {
 
     fun updateServer(transform: (ServerConfig) -> ServerConfig) {
         val updated = transform(_state.value.server)
+        if (updated.port !in 1..65535) return
         settings.setServerConfig(updated)
         graph.refreshClient()
         _state.update { it.copy(server = updated) }
@@ -96,13 +105,22 @@ class SettingsViewModel(private val graph: AppGraph) : ViewModel() {
         viewModelScope.launch {
             val tempClient = OpenCodeClient(config = AppGraph.buildClientConfig(settings))
             try {
+                if (settings.serverConfig().mode == ServerMode.LOCAL) {
+                    graph.ensureLocalServer()
+                    val localState = graph.runtime.serverState.value
+                    check(localState is ServerState.Running) {
+                        (localState as? ServerState.Failed)?.message ?: "Local server is not ready"
+                    }
+                }
                 val health = tempClient.health()
                 _state.update {
                     it.copy(connectionTest = "OK — opencode ${health.version}")
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.update {
-                    it.copy(connectionTest = "Failed: ${e.message?.take(120)}")
+                    it.copy(connectionTest = "Failed: ${e.message?.take(500)}")
                 }
             }
         }
@@ -153,7 +171,7 @@ class SettingsViewModel(private val graph: AppGraph) : ViewModel() {
     fun reinstallEnvironment() {
         _state.update { it.copy(showReinstallConfirm = false) }
         graph.bootstrap.reset()
-        graph.bootstrap.start()
+        graph.bootstrap.start(settings.opencodeVersionPin())
     }
 
     fun workspacePath(): String = graph.layout.workspaceDir.absolutePath

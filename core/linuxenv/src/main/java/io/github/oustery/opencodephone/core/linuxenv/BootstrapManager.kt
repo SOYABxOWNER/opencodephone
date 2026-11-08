@@ -37,7 +37,7 @@ class BootstrapManager(
     val layout: EnvLayout,
     private val runtime: EnvironmentRuntime,
     private val scope: CoroutineScope,
-    private val opencodeVersion: String = Pins.OPENCODE_VERSION,
+    private var opencodeVersion: String = Pins.OPENCODE_VERSION,
 ) {
 
     private val registry = DockerRegistryClient(DockerRegistryClient.longTimeoutClient())
@@ -54,8 +54,9 @@ class BootstrapManager(
 
     private val dateFormat = SimpleDateFormat("HH:mm:ss", Locale.US)
 
-    fun start() {
+    fun start(version: String = opencodeVersion) {
         if (job?.isActive == true) return
+        opencodeVersion = version
         job = scope.launch(Dispatchers.IO) { run() }
     }
 
@@ -99,7 +100,19 @@ class BootstrapManager(
     private suspend fun run() {
         try {
             if (layout.isInstalled()) {
-                setState(BootstrapPhase.READY, "Environment already installed")
+                // Older APKs installed an incompatible V2 CLI. Upgrade only
+                // that binary; never delete Debian or the user's workspace.
+                val stamp = layout.installedStamp.readText()
+                if ("opencode=$opencodeVersion" !in stamp.split(';') ||
+                    (deviceAbi().opencodeTarget != null && !layout.opencodeBin().isFile)
+                ) {
+                    layout.ensureDirs()
+                    installOpenCode(deviceAbi())
+                    layout.installedStamp.writeText(
+                        "debian=${Pins.DEBIAN_SUITE};opencode=$opencodeVersion;abi=${deviceAbi().androidAbi}",
+                    )
+                }
+                setState(BootstrapPhase.READY, "Environment ready")
                 return
             }
             layout.ensureDirs()
@@ -197,36 +210,8 @@ class BootstrapManager(
             }
             log("tool check: ${check.output.trim().lineSequence().firstOrNull().orEmpty()}")
 
-            // 4. OpenCode CLI.
-            val target = abi.opencodeTarget
-            if (target != null) {
-                setState(
-                    BootstrapPhase.INSTALLING_OPENCODE,
-                    "Installing OpenCode CLI $opencodeVersion",
-                )
-                val info = installer.resolvePackage(target, opencodeVersion)
-                val tgz = File(layout.downloadDir, "opencode-$opencodeVersion.tgz")
-                installer.downloadTarball(info, tgz) { read, total ->
-                    val fraction = if (total > 0) read.toFloat() / total else null
-                    setState(
-                        BootstrapPhase.INSTALLING_OPENCODE,
-                        "Installing OpenCode CLI $opencodeVersion",
-                        progress = fraction,
-                        message = "${read / (1024 * 1024)} / ${maxOf(total, 0) / (1024 * 1024)} MB",
-                    )
-                }
-                val bin = layout.opencodeBin()
-                installer.extractBinary(tgz, bin)
-                tgz.delete()
-                log("opencode CLI installed: ${bin.absolutePath}")
-            } else {
-                setState(
-                    BootstrapPhase.INSTALLING_OPENCODE,
-                    "OpenCode CLI unavailable on this CPU",
-                    message = "armv7 devices can still use Terminal and connect to a remote server in Settings",
-                )
-                log("opencode CLI skipped: no build for armv7")
-            }
+            // 4. Install the CLI matching the client protocol.
+            installOpenCode(abi)
 
             // 5. Final configuration (short, low-CPU guest command).
             setState(BootstrapPhase.CONFIGURING, "Configuring environment")
@@ -264,6 +249,47 @@ class BootstrapManager(
                 )
             }
         }
+    }
+
+    private fun deviceAbi(): DeviceAbi = DeviceAbi.fromPrimaryAbi(
+        Build.SUPPORTED_ABIS.firstOrNull() ?: error("Could not determine device ABI"),
+    ) ?: error("Unsupported CPU architecture")
+
+    private suspend fun installOpenCode(abi: DeviceAbi) {
+        val target = abi.opencodeTarget
+        if (target != null) {
+            setState(
+                BootstrapPhase.INSTALLING_OPENCODE,
+                "Installing OpenCode CLI $opencodeVersion",
+            )
+            val info = installer.resolvePackage(target, opencodeVersion)
+            val tgz = File(layout.downloadDir, "opencode-$opencodeVersion.tgz")
+            installer.downloadTarball(info, tgz) { read, total ->
+                val fraction = if (total > 0) read.toFloat() / total else null
+                setState(
+                    BootstrapPhase.INSTALLING_OPENCODE,
+                    "Installing OpenCode CLI $opencodeVersion",
+                    progress = fraction,
+                    message = "${read / (1024 * 1024)} / ${maxOf(total, 0) / (1024 * 1024)} MB",
+                )
+            }
+            val bin = layout.opencodeBin()
+            installer.extractBinary(tgz, bin)
+            tgz.delete()
+            val versionResult = runtime.exec(listOf("opencode", "--version"), timeoutMs = 60_000)
+            check(versionResult.exitCode == 0 && versionResult.output.contains(opencodeVersion)) {
+                "OpenCode CLI verification failed (exit ${versionResult.exitCode}): ${versionResult.output.takeLast(1000)}"
+            }
+            log("opencode CLI installed: ${bin.absolutePath}, version ${versionResult.output.trim()}")
+        } else {
+            setState(
+                BootstrapPhase.INSTALLING_OPENCODE,
+                "OpenCode CLI unavailable on this CPU",
+                message = "armv7 devices can still use Terminal and connect to a remote server in Settings",
+            )
+            log("opencode CLI skipped: no build for armv7")
+        }
+
     }
 
     private fun writeDnsFiles() {

@@ -1,5 +1,8 @@
 package io.github.oustery.opencodephone.ui.terminal
 
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -120,6 +123,8 @@ fun TerminalScreen(graph: AppGraph) {
                     placeholder = { Text(stringResource(R.string.terminal_input_hint)) },
                     modifier = Modifier.weight(1f),
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardActions = KeyboardActions(onSend = { vm.send() }),
                     textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 14.sp),
                     shape = MaterialTheme.shapes.small,
                 )

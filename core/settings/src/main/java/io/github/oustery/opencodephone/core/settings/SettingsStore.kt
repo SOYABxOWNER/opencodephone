@@ -127,7 +127,9 @@ class SettingsStore(context: Context) {
     // ---------------------------------------------------------- Versions
 
     fun opencodeVersionPin(): String =
-        prefs.getString(KEY_OPENCODE_PIN, Pins.OPENCODE_VERSION) ?: Pins.OPENCODE_VERSION
+        (prefs.getString(KEY_OPENCODE_PIN, Pins.OPENCODE_VERSION) ?: Pins.OPENCODE_VERSION)
+            // Migrate the incompatible default shipped before 0.1.3.
+            .let { if (it == "2.2.6") Pins.OPENCODE_VERSION else it }
 
     fun setOpencodeVersionPin(version: String) = edit {
         it.putString(KEY_OPENCODE_PIN, version)

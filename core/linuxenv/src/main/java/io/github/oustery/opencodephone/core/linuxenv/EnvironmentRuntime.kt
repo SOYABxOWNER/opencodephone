@@ -1,13 +1,10 @@
 package io.github.oustery.opencodephone.core.linuxenv
 
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
 
 data class ExecResult(
     val exitCode: Int,
@@ -29,27 +26,40 @@ class EnvironmentRuntime(
     private val layout: EnvLayout,
 ) {
 
-    private val _serverState = MutableStateFlow<ServerState>(ServerState.Stopped)
-    val serverState: StateFlow<ServerState> = _serverState
-
-    private val logLines = ArrayDeque<String>()
-    private val _serverLog = MutableStateFlow("")
-    val serverLog: StateFlow<String> = _serverLog
-
-    @Volatile
-    private var serverProcess: Process? = null
-
-    @Volatile
-    var serverPort: Int = 4096
-        private set
-
-    private fun appendLog(line: String) {
-        synchronized(logLines) {
-            logLines.addLast(line)
-            while (logLines.size > 200) logLines.removeFirst()
-            _serverLog.value = logLines.joinToString("\n")
-        }
-    }
+    private val managedServer = ManagedServer(
+        launch = { cfg ->
+            check(layout.isInstalled() && layout.opencodeBin().isFile) {
+                "Local CLI is not installed on this device. Finish setup or select a remote V1 server."
+            }
+            val env = buildMap {
+                if (!cfg.password.isNullOrBlank()) {
+                    put("OPENCODE_SERVER_PASSWORD", cfg.password)
+                    put("OPENCODE_SERVER_USERNAME", cfg.username?.ifBlank { "opencode" } ?: "opencode")
+                }
+            }
+            process(
+                listOf("opencode", "serve", "--hostname", "127.0.0.1", "--port", cfg.port.toString()),
+                env = env, cwd = PRootCommand.WORKSPACE_MOUNT, mergeOutput = true,
+            ).start()
+        },
+        probe = { cfg ->
+            io.github.oustery.opencodephone.core.opencode.OpenCodeClient(
+                client = localProbeClient,
+                config = io.github.oustery.opencodephone.core.opencode.ConnectionConfig(
+                    "127.0.0.1", cfg.port, cfg.username, cfg.password,
+                ),
+            ).health()
+            Unit
+        },
+    )
+    private val localProbeClient = okhttp3.OkHttpClient.Builder()
+        .proxy(java.net.Proxy.NO_PROXY)
+        .connectTimeout(1, TimeUnit.SECONDS)
+        .readTimeout(2, TimeUnit.SECONDS)
+        .callTimeout(3, TimeUnit.SECONDS)
+        .build()
+    val serverState: StateFlow<ServerState> = managedServer.state
+    val serverLog: StateFlow<String> = managedServer.log
 
     /** Build a ProcessBuilder that runs [command] inside the environment. */
     fun process(
@@ -112,100 +122,17 @@ class EnvironmentRuntime(
         )
     }
 
-    /**
-     * Start `opencode serve` as a child process and wait until the HTTP API
-     * answers. Returns when healthy or throws after [timeoutMs].
-     */
     suspend fun startServer(
         port: Int,
         password: String?,
         username: String?,
-        timeoutMs: Long = 45_000,
-    ): Unit = withContext(Dispatchers.IO) {
-        val current = serverProcess
-        if (current?.isAlive == true && _serverState.value is ServerState.Running) {
-            if (serverPort != port) stopServer() else return@withContext
-        }
-        stopServer()
-        serverPort = port
-        _serverState.value = ServerState.Starting("Starting opencode serve on :$port")
+        timeoutMs: Long = 60_000,
+        restart: Boolean = false,
+    ) = managedServer.start(ServerLaunchConfig(port, username, password), timeoutMs, restart)
 
-        val env = buildMap<String, String> {
-            if (!password.isNullOrBlank()) {
-                put("OPENCODE_SERVER_PASSWORD", password)
-                put("OPENCODE_SERVER_USERNAME", username ?: "opencode")
-            }
-        }
-        val command = listOf(
-            "opencode", "serve",
-            "--hostname", "127.0.0.1",
-            "--port", port.toString(),
-        )
-        val proc = process(command, env, cwd = PRootCommand.WORKSPACE_MOUNT, mergeOutput = true).start()
-        serverProcess = proc
+    fun reportServerFailure(message: String) = managedServer.fail(message)
 
-        val watcher = Thread {
-            proc.inputStream.bufferedReader().forEachLine { line ->
-                appendLog(line)
-            }
-        }
-        watcher.start()
+    fun stopServer() = managedServer.stop()
 
-        val deadline = System.currentTimeMillis() + timeoutMs
-        val healthy = AtomicBoolean(false)
-        while (System.currentTimeMillis() < deadline && proc.isAlive) {
-            if (probeHealth(port, password, username)) {
-                healthy.set(true)
-                break
-            }
-            delay(1000)
-        }
-        if (healthy.get()) {
-            _serverState.value = ServerState.Running(port)
-        } else {
-            proc.destroyForcibly()
-            _serverState.value = ServerState.Failed(
-                "opencode serve did not become healthy within ${timeoutMs / 1000}s. " +
-                    "Log tail: ${synchronized(logLines) { logLines.takeLast(8).joinToString(" | ") }}",
-            )
-        }
-    }
-
-    /** Direct HTTP probe against the local server health endpoint. */
-    private suspend fun probeHealth(port: Int, password: String?, username: String?): Boolean = try {
-        val url = "http://127.0.0.1:$port/global/health"
-        val builder = okhttp3.Request.Builder().url(url)
-        if (!password.isNullOrBlank()) {
-            builder.header(
-                "Authorization",
-                okhttp3.Credentials.basic(username ?: "opencode", password),
-            )
-        }
-        withContext(Dispatchers.IO) {
-            okhttp3.OkHttpClient.Builder()
-                .connectTimeout(2, TimeUnit.SECONDS)
-                .readTimeout(3, TimeUnit.SECONDS)
-                .build()
-                .newCall(builder.build())
-                .execute()
-                .use { it.isSuccessful }
-        }
-    } catch (_: Exception) {
-        false
-    }
-
-    fun stopServer() {
-        val proc = serverProcess ?: return
-        serverProcess = null
-        try {
-            proc.destroy()
-            proc.waitFor(3, TimeUnit.SECONDS)
-            if (proc.isAlive) proc.destroyForcibly()
-        } catch (_: Exception) {
-        }
-        _serverState.value = ServerState.Stopped
-    }
-
-    /** True when the serve process is alive (regardless of health probe). */
-    fun isServerAlive(): Boolean = serverProcess?.isAlive == true
+    fun isServerAlive(): Boolean = managedServer.isAlive()
 }

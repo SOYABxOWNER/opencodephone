@@ -78,6 +78,21 @@ Per-architecture APKs are built automatically:
   `docs/adr/ADR-008-toolset-bootstrap.md`). Rebuild them with
   `tools/build_toolset.py <arch>…` and update the digests in `Pins`.
 
+## Server compatibility
+
+The native client supports **OpenCode V1**, pinned to **1.19.5**. OpenCode V2
+has a different API; its HTML web fallback is not a valid V1 health response.
+Since v0.1.3, a local server starts automatically after setup and on subsequent
+launches. Settings provides restart controls, errors and server logs.
+
+Existing installations replace only the incompatible CLI, without re-extracting
+Debian or deleting projects. V1 uses isolated XDG directories so it does not open
+or overwrite a V2 database; V2 sessions/config are preserved but not converted.
+See `docs/adr/ADR-011-server-autostart-and-api-compatibility.md`.
+
+The terminal is a persistent pipe-based command console, not a PTY: no full-screen
+TUI programs or job control. Normal shell commands and persistent `cd` work.
+
 ## Troubleshooting
 
 - **"Environment self-check failed (exit 255)".** This code alone does not

@@ -16,6 +16,8 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
@@ -51,7 +53,7 @@ data class ConnectionConfig(
 class OpenCodeApiException(val code: Int, message: String) : Exception(message)
 
 /**
- * Kotlin client for the OpenCode 2 headless server (`opencode serve`).
+ * Kotlin client for the OpenCode V1 headless server (`opencode serve`).
  *
  * Endpoint reference: https://opencode.ai/docs/server/
  * (recorded in docs/research/01-opencode-platform.md).
@@ -62,6 +64,9 @@ class OpenCodeClient(
 ) {
 
     private val json = OcJson.lenient
+    private val loopbackClient = client.newBuilder().proxy(java.net.Proxy.NO_PROXY).build()
+    private fun transport(): OkHttpClient =
+        if (config.host in setOf("127.0.0.1", "localhost", "::1", "[::1]")) loopbackClient else client
 
     companion object {
         fun defaultHttpClient(): OkHttpClient = OkHttpClient.Builder()
@@ -77,7 +82,7 @@ class OpenCodeClient(
     private fun Request.Builder.withAuth(): Request.Builder {
         val pass = config.password
         if (!pass.isNullOrBlank()) {
-            header("Authorization", Credentials.basic(config.username ?: "opencode", pass))
+            header("Authorization", Credentials.basic(config.username?.ifBlank { "opencode" } ?: "opencode", pass))
         }
         return this
     }
@@ -93,14 +98,23 @@ class OpenCodeClient(
         val request = Request.Builder()
             .url(config.baseUrl + path)
             .withAuth()
+            .header("Accept", "application/json")
             .method(method, bodyStr?.toRequestBody(mediaType))
             .build()
-        client.newCall(request).execute().use { response: Response ->
+        transport().newCall(request).execute().use { response: Response ->
             val text = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
                 throw OpenCodeApiException(
                     response.code,
                     "HTTP ${response.code} ${method} $path: ${text.take(300)}",
+                )
+            }
+            val contentType = response.header("Content-Type").orEmpty().lowercase()
+            if (text.isNotBlank() && (contentType.contains("text/html") || text.trimStart().startsWith("<"))) {
+                throw OpenCodeApiException(
+                    response.code,
+                    "Expected OpenCode V1 JSON at $path, but received HTML. " +
+                        "OpenCode V2 has a different API; use a 1.x server or check the host and port.",
                 )
             }
             text.ifBlank { null }
@@ -115,13 +129,22 @@ class OpenCodeClient(
     ): T {
         val text = execute(method, path, body)
             ?: throw OpenCodeApiException(-1, "Empty response for $path")
-        return json.decodeFromString(serializer, text)
+        return try {
+            json.decodeFromString(serializer, text)
+        } catch (e: SerializationException) {
+            throw OpenCodeApiException(-1, "Invalid OpenCode V1 JSON response for $path. Check the server version and address.")
+        }
     }
 
     // ---------------------------------------------------------------- Global
 
-    suspend fun health(): Health =
-        executeParsed("GET", "/global/health", serializer = Health.serializer())
+    suspend fun health(): Health {
+        val health = executeParsed("GET", "/global/health", serializer = Health.serializer())
+        if (!health.healthy || !health.version.startsWith("1.")) {
+            throw OpenCodeApiException(-1, "Server is not a healthy OpenCode V1 API (expected healthy=true and version 1.x).")
+        }
+        return health
+    }
 
     /** SSE stream of all bus events. First event is `server.connected`. */
     fun events(): Flow<ServerEvent> = eventStream("/event")
@@ -134,7 +157,7 @@ class OpenCodeClient(
             .url(config.baseUrl + path)
             .withAuth()
             .build()
-        val source = EventSources.createFactory(client).newEventSource(
+        val source = EventSources.createFactory(transport()).newEventSource(
             request,
             object : EventSourceListener() {
                 override fun onEvent(eventSource: EventSource, id: String?, type: String?, data: String) {

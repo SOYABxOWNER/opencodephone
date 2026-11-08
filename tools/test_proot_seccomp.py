@@ -12,6 +12,7 @@ from pathlib import Path
 import platform
 import re
 import signal
+import select
 import subprocess
 import struct
 import tempfile
@@ -124,6 +125,54 @@ class PRootSeccompTest(unittest.TestCase):
         ])
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("thread-ok", result.stdout)
+
+    def test_sigterm_reaps_guest_instead_of_leaving_server_orphan(self):
+        with tempfile.TemporaryDirectory(prefix="proot-stop-") as tmp:
+            proc = subprocess.Popen(
+                [str(PROOT), "--kill-on-exit", "-0", "-r", "/", "/bin/sh", "-c",
+                 "echo guest-ready; exec /bin/sleep 30"],
+                env=dict(os.environ, PROOT_NO_SECCOMP="1", PROOT_TMP_DIR=tmp,
+                         GLIBC_TUNABLES="glibc.pthread.rseq=0"),
+                preexec_fn=block_android_incompatible_syscalls,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+            )
+            children = []
+            try:
+                self.assertTrue(select.select([proc.stdout], [], [], 5)[0], "guest did not start")
+                self.assertEqual("guest-ready", proc.stdout.readline().strip())
+                child_file = Path(f"/proc/{proc.pid}/task/{proc.pid}/children")
+                children = [int(pid) for pid in child_file.read_text().split()]
+                self.assertTrue(children)
+                proc.terminate()  # exactly what Java Process.destroy() sends
+                proc.wait(timeout=5)
+                for pid in children:
+                    self.assertFalse(Path(f"/proc/{pid}").exists(), f"orphan guest {pid}")
+            finally:
+                if proc.poll() is None:
+                    proc.kill()
+                    proc.wait()
+                for pid in children:
+                    try:
+                        os.kill(pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                proc.stdout.close()
+
+    def test_pipe_shell_runs_commands_without_job_control_or_tty(self):
+        with tempfile.TemporaryDirectory(prefix="pipe-shell-") as tmp:
+            result = subprocess.run(
+                [str(PROOT), "-0", "-r", "/", "/bin/bash", "--noprofile", "--norc", "-s"],
+                input="cd /tmp\npwd\nprintf 'shell-ok\\n'\n",
+                env=dict(os.environ, PROOT_NO_SECCOMP="1", PROOT_TMP_DIR=tmp,
+                         GLIBC_TUNABLES="glibc.pthread.rseq=0"),
+                preexec_fn=block_android_incompatible_syscalls,
+                capture_output=True, text=True, timeout=20,
+            )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("/tmp", result.stdout)
+        self.assertIn("shell-ok", result.stdout)
+        self.assertNotIn("job control", result.stderr)
+        self.assertNotIn("terminal process group", result.stderr)
 
     def test_app_environment_runs_probe_and_shell_children(self):
         # Read the production setting so deleting/changing it fails this test.

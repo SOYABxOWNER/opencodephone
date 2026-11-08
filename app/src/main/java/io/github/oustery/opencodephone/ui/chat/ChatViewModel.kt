@@ -18,6 +18,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
@@ -64,23 +65,20 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
     init {
         // React to server lifecycle.
         viewModelScope.launch {
-            graph.runtime.serverState.collectLatest { serverState ->
-                when (serverState) {
-                    is ServerState.Running -> connect()
-                    is ServerState.Starting -> _state.update {
-                        it.copy(connection = ChatConnection.CONNECTING)
-                    }
-                    is ServerState.Failed -> if (graph.settings.serverConfig().mode == ServerMode.LOCAL) {
-                        _state.update {
-                            it.copy(connection = ChatConnection.ERROR, error = serverState.message)
-                        }
-                    }
-                    ServerState.Stopped -> _state.update {
-                        it.copy(connection = ChatConnection.DISCONNECTED, busy = false)
+            combine(graph.serverConfiguration, graph.runtime.serverState) { cfg, state -> cfg.mode to state }
+                .collectLatest { (mode, serverState) ->
+                    eventsJob?.cancel()
+                    if (mode == ServerMode.REMOTE) {
+                        connect()
+                    } else when (serverState) {
+                        is ServerState.Running -> connect()
+                        is ServerState.Starting -> _state.update { it.copy(connection = ChatConnection.CONNECTING, error = null) }
+                        is ServerState.Failed -> _state.update { it.copy(connection = ChatConnection.ERROR, error = serverState.message) }
+                        ServerState.Stopped -> _state.update { it.copy(connection = ChatConnection.DISCONNECTED, busy = false) }
                     }
                 }
-            }
         }
+
         // Debounced message reload driven by SSE events.
         viewModelScope.launch {
             reloadSignal.collectLatest {
@@ -190,7 +188,7 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
 
             event.type.startsWith("session.") -> loadSessionsQuiet()
 
-            event.type == "permission.updated" -> {
+            event.type == "permission.updated" || event.type == "permission.asked" -> {
                 val request = OcJson.permissionRequest(event.properties)
                 if (request != null) {
                     _state.update { it.copy(permission = request) }

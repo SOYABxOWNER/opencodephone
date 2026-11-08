@@ -66,14 +66,9 @@ class EnvService : LifecycleService() {
         return START_STICKY
     }
 
-    override fun onDestroy() {
-        // The service being torn down means the user no longer needs the env;
-        // stop the child server so no orphan processes linger.
-        if (!graph.runtime.isServerAlive()) {
-            graph.runtime.stopServer()
-        }
-        super.onDestroy()
-    }
+    // Child lifetime is owned by AppGraph/ManagedServer, not notification
+    // teardown. A delayed stopService from setup can overlap the next
+    // startForegroundService; onDestroy must not kill that new child.
 
     private fun createChannel() {
         val channel = NotificationChannel(
