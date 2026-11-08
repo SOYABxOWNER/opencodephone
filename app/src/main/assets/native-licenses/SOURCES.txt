@@ -1,0 +1,22 @@
+Standalone PRoot executable: termux/proot
+Source: https://github.com/termux/proot/tree/52d65a4dc140ca554d241a1438ddd4f6b00c9813
+License: GPL-2.0-or-later (PRoot-COPYING.txt, PRoot-GPL-2.txt).
+The program runs as a separate child process, not as a JNI library.
+
+Static dependencies:
+- talloc 2.1.1, LGPL-3.0-or-later (talloc-COPYRIGHT.txt, talloc-LGPL-3.txt,
+  GPL-3.txt). Exact source archive:
+  https://github.com/proot-me/proot-static-build/blob/aa7ec720453edd8245476c6e1e61977f7c30e95c/packages/talloc-2.1.1.tar.gz
+- musl libc and compiler runtime distributed with Zig 0.13.0:
+  musl-COPYRIGHT.txt and Zig-MIT.txt. Compiler distribution:
+  https://registry.npmjs.org/@ryoppippi/zig-linux-x64/-/zig-linux-x64-0.13.0.tgz
+- BSD queue macros: queue.h.txt (full header in tools/native/sys/queue.h).
+
+Complete build recipe, local patches and compatibility headers are in this
+application's source repository under tools/build_proot.py and tools/native/:
+https://github.com/oustery/opencodephone
+Run python3 tools/build_proot.py on Linux x86_64. The pinned compiler and
+sources are downloaded and verified; all ABIs are statically compiled and
+linked from source, with no external Android or Termux shared libraries.
+The same recipe can rebuild/relink PRoot with a modified talloc library.
+See docs/adr/ADR-010-android-compatible-proot.md for build details and limits.

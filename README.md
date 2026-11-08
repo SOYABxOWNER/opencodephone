@@ -83,10 +83,12 @@ Per-architecture APKs are built automatically:
 - **"Environment self-check failed (exit 255)".** This code alone does not
   identify the cause. The preflight probe now logs proot's terminating signal.
   **SIGSYS** (31 on arm64/x86_64) indicates a forbidden syscall, not battery
-  optimization: Debian glibc can attempt `rseq` before `/bin/true` reaches
-  `main()`. The app disables it with `GLIBC_TUNABLES=glibc.pthread.rseq=0`
-  for all guest processes. `PROOT_NO_SECCOMP=1` alone does not disable Android's
-  inherited seccomp filter. See ADR-009 and `python3 tools/test_proot_seccomp.py`.
+  optimization. Debian glibc uses syscalls that Android app policies may reject,
+  including `set_robust_list` and `rseq`. Since v0.1.2 the app bundles a static
+  Android-compatible Termux PRoot (Termux itself is not required), which handles
+  outer-filter SIGSYS and logs the trapped syscall number. Disabling rseq alone
+  was insufficient. See ADR-010 and `python3 tools/test_proot_seccomp.py`.
+  Rebuild all bundled native binaries with `python3 tools/build_proot.py`.
   For **SIGKILL** (9), Android's child-process restrictions, memory pressure or
   aggressive battery management may be responsible. Keep the app on screen
   and disable battery optimization for OpenCodePhone. On supported devices,

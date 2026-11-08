@@ -31,3 +31,6 @@ Thumbs.db
 
 # Kotlin build session dir
 .kotlin/
+
+# Python tool caches
+__pycache__/

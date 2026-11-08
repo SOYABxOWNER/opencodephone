@@ -72,8 +72,8 @@ object Pins {
     const val OPENCODE_VERSION: String = "2.2.6"
     const val OPENCODE_NPM_SCOPE: String = "@opencode"
 
-    /** proot static binaries bundled into the APK (proot-me release v5.3.0). */
-    const val PROOT_VERSION: String = "5.3.0"
+    /** Android-compatible static PRoot (Termux fork; see tools/build_proot.py). */
+    const val PROOT_VERSION: String = "termux-52d65a4dc140"
 
     /**
      * Pre-resolved toolset tarballs (git, curl, ripgrep and their dependency

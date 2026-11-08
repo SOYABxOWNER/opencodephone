@@ -12,6 +12,10 @@ environment inside an Android app without root.
 | Termux dependency | Rejected: the app would not be autonomous; Termux must be installed and configured. |
 | **proot (ptrace-based rootless guest)** | **Selected** — the approach used by Termux's proot-distro and UserLAnd; runs a full distro root tree inside app-private storage. |
 
+> Updated by ADR-010: upstream Linux binaries were replaced with static
+> Android-compatible Termux PRoot builds; see `tools/build_proot.py`. The
+> original selection below is retained as historical research.
+
 ## proot binary: sources evaluated
 
 1. **Termux package proot 5.1.107** — dynamically linked against

@@ -1,0 +1,14 @@
+diff --git a/src/tracee/event.c b/src/tracee/event.c
+--- a/src/tracee/event.c
++++ b/src/tracee/event.c
+@@ -840,6 +840,10 @@
+ 			siginfo_t siginfo = {};
+ 			ptrace(PTRACE_GETSIGINFO, tracee->pid, NULL, &siginfo);
+ 			if (siginfo.si_code == SYS_SECCOMP) {
++				VERBOSE(tracee, 1,
++					"outer seccomp trapped syscall %d (audit arch %#x); applying Android compatibility",
++					siginfo.si_syscall, siginfo.si_arch);
++
+ 				/* A filter that raises SIGSYS cancels the syscall
+ 				 * (SECCOMP_RET_TRAP skips it), so the sysenter stop
+ 				 * that otherwise follows a PTRACE_EVENT_SECCOMP stop
