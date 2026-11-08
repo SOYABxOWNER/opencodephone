@@ -17,8 +17,8 @@ android {
         // proot must execve guest binaries straight out of the rootfs in app
         // data, so the app must keep the legacy untrusted_app_27 domain.
         targetSdk = 28
-        versionCode = 2
-        versionName = "0.1.1"
+        versionCode = 3
+        versionName = "0.1.2"
     }
 
     // One APK per architecture: each APK bundles only the matching proot binary.

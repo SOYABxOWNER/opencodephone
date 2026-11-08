@@ -112,7 +112,7 @@ class BootstrapManager(
 
             log("device: ${Build.MODEL}, Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT}), " +
                 "ABI $primary, page ${pageSize()} bytes")
-            log("bootstrap: rootfs=${Pins.DEBIAN_SUITE}, opencode=$opencodeVersion")
+            log("bootstrap: rootfs=${Pins.DEBIAN_SUITE}, opencode=$opencodeVersion, proot=${Pins.PROOT_VERSION}")
 
             // 1. Debian rootfs, digest-pinned and checksum-verified.
             val digest = Pins.ROOTFS_MANIFEST_DIGESTS[abi.debianArch]

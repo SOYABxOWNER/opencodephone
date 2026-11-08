@@ -1,5 +1,8 @@
 # ADR-009 — Disable guest glibc rseq on Android
 
+> Follow-up: ADR-010 supersedes the rseq-only fix after a second device log
+> confirmed SIGSYS despite the tunable. The native tracer must support Android.
+
 ## Evidence and limits
 
 The RMO-NX1 / Android 13 / arm64 screenshot reports that extraction succeeds,

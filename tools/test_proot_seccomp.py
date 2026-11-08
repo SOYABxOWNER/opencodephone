@@ -3,7 +3,7 @@
 
 Run on a glibc >= 2.35 host: python3 tools/test_proot_seccomp.py
 Uses the APK's actual static proot. No root, Android SDK or downloads needed.
-Only children receive the filter. This models rseq rejection, not all Android
+Only children receive the filter. This models several syscall rejections, not all Android
 policies, and does not replace real-device testing.
 """
 import ctypes
@@ -13,6 +13,7 @@ import platform
 import re
 import signal
 import subprocess
+import struct
 import tempfile
 import unittest
 
@@ -33,19 +34,53 @@ class SockFprog(ctypes.Structure):
     _fields_ = [("len", ctypes.c_ushort), ("filter", ctypes.POINTER(SockFilter))]
 
 
-def block_rseq():
-    # x86_64 __NR_rseq=334. BPF: load syscall number; trap rseq; allow others.
-    filters = (SockFilter * 4)(
-        SockFilter(0x20, 0, 0, 0), SockFilter(0x15, 0, 1, 334),
-        SockFilter(0x06, 0, 0, 0x00030000),  # SECCOMP_RET_TRAP -> SIGSYS
-        SockFilter(0x06, 0, 0, 0x7fff0000),  # SECCOMP_RET_ALLOW
-    )
-    program = SockFprog(4, filters)
+def block_android_incompatible_syscalls():
+    # x86_64: fork=57, set_robust_list=273, rseq=334, clone3=435. The old rseq-only
+    # test missed glibc's earlier robust-list registration and thread/fork
+    # fallback. Model Android SECCOMP_RET_TRAP, never alter the parent filter.
+    blocked = (57, 273, 334, 435)
+    instructions = [SockFilter(0x20, 0, 0, 0)]  # load syscall number
+    for number in blocked:
+        instructions += [SockFilter(0x15, 0, 1, number),
+                         SockFilter(0x06, 0, 0, 0x00030000)]
+    instructions.append(SockFilter(0x06, 0, 0, 0x7fff0000))
+    filters = (SockFilter * len(instructions))(*instructions)
+    program = SockFprog(len(filters), filters)
     libc = ctypes.CDLL(None, use_errno=True)
-    # PR_SET_NO_NEW_PRIVS, then PR_SET_SECCOMP / SECCOMP_MODE_FILTER.
     if (libc.prctl(38, 1, 0, 0, 0) != 0 or
             libc.prctl(22, 2, ctypes.byref(program), 0, 0) != 0):
         os._exit(120)
+
+
+class BundledElfTest(unittest.TestCase):
+    def test_all_abis_are_static_with_android_page_compatible_segments(self):
+        for abi, machine in (("x86_64", 62), ("arm64-v8a", 183), ("armeabi-v7a", 40)):
+            with self.subTest(abi=abi):
+                data = (ROOT / f"app/src/main/jniLibs/{abi}/libproot.so").read_bytes()
+                self.assertEqual(b"\x7fELF", data[:4])
+                self.assertEqual(1, data[5])  # little endian
+                is64 = data[4] == 2
+                header = struct.unpack_from("<16sHHIQQQIHHHHHH" if is64 else
+                                            "<16sHHIIIIIHHHHHH", data)
+                self.assertEqual(machine, header[2])
+                entry, phoff, phsize, phnum = header[4], header[5], header[9], header[10]
+                entry_executable = False
+                for i in range(phnum):
+                    ph = struct.unpack_from("<IIQQQQQQ" if is64 else "<IIIIIIII",
+                                            data, phoff + i * phsize)
+                    kind = ph[0]
+                    self.assertNotIn(kind, (2, 3), "must not require a dynamic linker or shared libraries")
+                    if is64:
+                        flags, offset, address, size = ph[1], ph[2], ph[3], ph[6]
+                    else:
+                        flags, offset, address, size = ph[6], ph[1], ph[2], ph[5]
+                    if kind == 1:
+                        self.assertEqual(offset % 16384, address % 16384)
+                        if flags & 1 and address <= entry < address + size:
+                            entry_executable = True
+                    if kind == 0x6474e551:  # PT_GNU_STACK
+                        self.assertEqual(0, flags & 1)
+                self.assertTrue(entry_executable)
 
 
 @unittest.skipUnless(platform.system() == "Linux" and
@@ -57,18 +92,38 @@ class PRootSeccompTest(unittest.TestCase):
     def run_guest(self, tunables, command):
         with tempfile.TemporaryDirectory(prefix="proot-seccomp-") as tmp:
             result = subprocess.run(
-                [str(PROOT), "--kill-on-exit", "-v", "1", "-r", "/", *command],
+                [str(PROOT), "--kill-on-exit", "-v", "1", "-0", "-r", "/", *command],
                 env=dict(os.environ, PROOT_NO_SECCOMP="1", PROOT_TMP_DIR=tmp,
                          GLIBC_TUNABLES=tunables),
-                preexec_fn=block_rseq, capture_output=True, text=True, timeout=20,
+                preexec_fn=block_android_incompatible_syscalls, capture_output=True, text=True, timeout=20,
             )
         self.assertNotEqual(120, result.returncode, "cannot install seccomp filter")
         return result
 
-    def test_unfixed_probe_silently_returns_255(self):
+    def test_filter_really_blocks_untraced_glibc_startup(self):
+        result = subprocess.run(
+            ["/bin/true"], preexec_fn=block_android_incompatible_syscalls,
+            env=dict(os.environ, GLIBC_TUNABLES="glibc.pthread.rseq=0"),
+            capture_output=True, timeout=20,
+        )
+        # Even with the previous rseq fix, robust-list registration is fatal
+        # without a tracer translating the Android seccomp rejection.
+        self.assertEqual(-signal.SIGSYS, result.returncode, result.stderr)
+
+    def test_tracer_handles_rejections_even_with_rseq_enabled(self):
         result = self.run_guest("glibc.pthread.rseq=1", ["/bin/true"])
-        self.assertEqual(255, result.returncode, result.stderr)
-        self.assertIn(f"terminated with signal {int(signal.SIGSYS)}", result.stderr)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("outer seccomp trapped syscall 273", result.stderr)
+
+    def test_threads_and_fork_fall_back_when_clone3_is_blocked(self):
+        result = self.run_guest("glibc.pthread.rseq=0", [
+            "/usr/bin/python3", "-c",
+            "import threading, subprocess; "
+            "t = threading.Thread(target=lambda: print('thread-ok')); "
+            "t.start(); t.join(); subprocess.run(['/bin/true'], check=True)",
+        ])
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("thread-ok", result.stdout)
 
     def test_app_environment_runs_probe_and_shell_children(self):
         # Read the production setting so deleting/changing it fails this test.
