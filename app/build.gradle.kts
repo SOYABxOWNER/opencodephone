@@ -11,9 +11,14 @@ android {
     defaultConfig {
         applicationId = "io.github.oustery.opencodephone"
         minSdk = 26
-        targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        // Deliberately pinned to 28, NOT the latest API — see ADR-007.
+        // Android 10+ forbids execve() of files under app data for apps
+        // targeting API 29+ (SELinux untrusted_app_29 noexec on app_data_file).
+        // proot must execve guest binaries straight out of the rootfs in app
+        // data, so the app must keep the legacy untrusted_app_27 domain.
+        targetSdk = 28
+        versionCode = 2
+        versionName = "0.1.1"
     }
 
     // One APK per architecture: each APK bundles only the matching proot binary.
@@ -71,6 +76,14 @@ android {
         jniLibs {
             useLegacyPackaging = true
         }
+    }
+
+    lint {
+        // Not distributed through Play Store, so Play's targetSdk floor does
+        // not apply; lint would still abort the release build on the pinned
+        // targetSdk 28 (ExpiredTargetSdkVersion), so vital checks are off.
+        checkReleaseBuilds = false
+        abortOnError = false
     }
 }
 

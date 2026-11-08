@@ -35,6 +35,9 @@ class BootstrapManager(
 
     private var job: Job? = null
 
+    /** Phase the pipeline is currently in; kept so failures report the step. */
+    private var currentPhase: BootstrapPhase = BootstrapPhase.NOT_STARTED
+
     fun start() {
         if (job?.isActive == true) return
         job = scope.launch(Dispatchers.IO) { run() }
@@ -63,6 +66,7 @@ class BootstrapManager(
         progress: Float? = null,
         message: String = "",
     ) {
+        currentPhase = phase
         _state.update {
             BootstrapState(phase = phase, label = label, progress = progress, message = message)
         }
@@ -189,6 +193,7 @@ class BootstrapManager(
                     phase = BootstrapPhase.FAILED,
                     label = "Bootstrap failed",
                     error = e.message ?: e.javaClass.simpleName,
+                    failedPhase = currentPhase,
                 )
             }
         }

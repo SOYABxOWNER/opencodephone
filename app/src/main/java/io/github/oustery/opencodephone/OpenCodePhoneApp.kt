@@ -1,6 +1,7 @@
 package io.github.oustery.opencodephone
 
 import android.app.Application
+import android.content.Context
 import io.github.oustery.opencodephone.core.linuxenv.BootstrapManager
 import io.github.oustery.opencodephone.core.linuxenv.EnvLayout
 import io.github.oustery.opencodephone.core.linuxenv.EnvironmentRuntime
@@ -17,6 +18,8 @@ import kotlinx.coroutines.SupervisorJob
  * would add more surface than it removes (see ADR-002).
  */
 class AppGraph(context: Application) {
+
+    val appContext: Context = context.applicationContext
 
     val appScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 

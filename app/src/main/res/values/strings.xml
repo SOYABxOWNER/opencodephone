@@ -58,6 +58,7 @@
     <string name="chat_model_selected">selected</string>
 
     <!-- Files -->
+    <string name="files_env_not_ready">The Linux environment is not installed yet — git commands become available after setup completes.</string>
     <string name="files_clone">Clone</string>
     <string name="files_new_file">New file</string>
     <string name="files_new_file_hint">path/name.txt (trailing / creates a folder)</string>
@@ -71,6 +72,7 @@
     <string name="git_push">Push</string>
 
     <!-- Terminal -->
+    <string name="terminal_env_not_ready">The Linux environment is not installed yet. Finish the setup on the home screen first.</string>
     <string name="terminal_clear">Clear</string>
     <string name="terminal_restart">Restart shell</string>
     <string name="terminal_input_hint">shell command…</string>

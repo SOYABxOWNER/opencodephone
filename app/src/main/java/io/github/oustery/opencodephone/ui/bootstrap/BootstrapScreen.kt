@@ -115,7 +115,7 @@ fun BootstrapScreen(graph: AppGraph) {
         }
 
         Spacer(Modifier.height(32.dp))
-        BootstrapSteps(state.phase)
+        BootstrapSteps(state.phase, state.failedPhase)
 
         Spacer(Modifier.height(48.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -133,7 +133,7 @@ fun BootstrapScreen(graph: AppGraph) {
 private enum class StepVisual { PENDING, ACTIVE, DONE, FAILED }
 
 @Composable
-private fun BootstrapSteps(phase: BootstrapPhase) {
+private fun BootstrapSteps(phase: BootstrapPhase, failedPhase: BootstrapPhase?) {
     val steps = listOf(
         Triple(BootstrapPhase.DOWNLOADING_ROOTFS, stringResource(R.string.bootstrap_step_rootfs), 1),
         Triple(BootstrapPhase.EXTRACTING_ROOTFS, stringResource(R.string.bootstrap_step_extract), 2),
@@ -143,12 +143,22 @@ private fun BootstrapSteps(phase: BootstrapPhase) {
     )
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         steps.forEach { (stepPhase, label, order) ->
-            val current = phaseOrder(phase)
-            val visual = when {
-                phase == BootstrapPhase.FAILED && current <= order -> StepVisual.FAILED
-                current > order -> StepVisual.DONE
-                current == order -> StepVisual.ACTIVE
-                else -> StepVisual.PENDING
+            val visual = if (phase == BootstrapPhase.FAILED && failedPhase != null) {
+                // Only the step that was running failed; earlier steps stay done,
+                // later ones stay pending.
+                val failedOrder = phaseOrder(failedPhase)
+                when {
+                    order < failedOrder -> StepVisual.DONE
+                    order == failedOrder -> StepVisual.FAILED
+                    else -> StepVisual.PENDING
+                }
+            } else {
+                val current = phaseOrder(phase)
+                when {
+                    current > order -> StepVisual.DONE
+                    current == order -> StepVisual.ACTIVE
+                    else -> StepVisual.PENDING
+                }
             }
             StepRow(visual, label, order)
         }

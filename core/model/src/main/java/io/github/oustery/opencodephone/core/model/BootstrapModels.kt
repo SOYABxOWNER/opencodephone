@@ -21,6 +21,8 @@ data class BootstrapState(
     val progress: Float? = null,
     val message: String = "",
     val error: String? = null,
+    /** Set on failure: the phase that was running when it broke. */
+    val failedPhase: BootstrapPhase? = null,
 )
 
 /**

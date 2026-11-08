@@ -70,7 +70,17 @@ Pinned digests (fetched 2026-11-08 from the registry index):
 
 ## Consequences
 
-- No root, no Termux, no SELinux hacks — the environment lives in app-private
+- No root and no Termux dependency — the environment lives in app-private
   storage (`files/linuxenv`).
 - Bootstrap is fully automated: download → verify → extract → apt tools →
   opencode CLI (Research 01 / ADR-003).
+
+## Update (2026-11-08): SELinux exec restriction on Android 10+
+
+Real-device testing surfaced the one hard constraint this document
+originally understated: apps **targeting API 29+** run in the
+`untrusted_app_29` SELinux domain where `execve()` of files under app data
+is denied (Android 10 W^X policy). proot must execve guest binaries from
+the rootfs in app data, so the app pins `targetSdk = 28` to stay in the
+legacy `untrusted_app_27` domain — the same choice Termux and UserLAnd
+make. See ADR-007 for the full analysis and rejected alternatives.

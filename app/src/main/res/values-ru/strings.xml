@@ -58,6 +58,7 @@
     <string name="chat_model_selected">выбрана</string>
 
     <!-- Files -->
+    <string name="files_env_not_ready">Среда Linux ещё не установлена — команды git станут доступны после завершения настройки.</string>
     <string name="files_clone">Клонировать</string>
     <string name="files_new_file">Новый файл</string>
     <string name="files_new_file_hint">путь/имя.txt (слэш в конце создаёт папку)</string>
@@ -71,6 +72,7 @@
     <string name="git_push">Push</string>
 
     <!-- Terminal -->
+    <string name="terminal_env_not_ready">Среда Linux ещё не установлена. Сначала завершите настройку на главном экране.</string>
     <string name="terminal_clear">Очистить</string>
     <string name="terminal_restart">Перезапуск шелла</string>
     <string name="terminal_input_hint">команда шелла…</string>

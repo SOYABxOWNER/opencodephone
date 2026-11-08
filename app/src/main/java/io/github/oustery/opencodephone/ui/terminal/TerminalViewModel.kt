@@ -32,6 +32,13 @@ class TerminalViewModel(private val graph: AppGraph) : ViewModel() {
 
     fun start() {
         if (process?.isAlive == true) return
+        if (!graph.layout.isInstalled()) {
+            // Without the rootfs proot only emits cryptic warnings; give a
+            // human-readable hint instead of starting a doomed shell.
+            appendLine("── ${graph.appContext.getString(io.github.oustery.opencodephone.R.string.terminal_env_not_ready)} ──")
+            _state.update { it.copy(alive = false) }
+            return
+        }
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val proc = graph.runtime.process(

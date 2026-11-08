@@ -53,6 +53,20 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
         refreshGit()
     }
 
+    /** Git runs inside the Debian env; without it the commands only spew proot warnings. */
+    private fun envReady(): Boolean {
+        val ready = graph.layout.isInstalled()
+        if (!ready) {
+            _state.update {
+                it.copy(
+                    busy = null,
+                    message = graph.appContext.getString(io.github.oustery.opencodephone.R.string.files_env_not_ready),
+                )
+            }
+        }
+        return ready
+    }
+
     fun refresh() {
         val entries = mutableListOf<FileEntry>()
         val expanded = _state.value.expanded
@@ -129,6 +143,7 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
     fun cloneRepository(url: String) {
         val trimmed = url.trim()
         if (trimmed.isEmpty()) return
+        if (!envReady()) return
         val name = trimmed.removeSuffix(".git").substringAfterLast('/').ifBlank { "repository" }
         _state.update { it.copy(showCloneDialog = false, busy = "Cloning $name…") }
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
@@ -177,6 +192,7 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
     }
 
     private fun refreshGit() {
+        if (!graph.layout.isInstalled()) return
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             val status = graph.runtime.exec(
                 listOf("bash", "-lc", "git status --porcelain -b 2>&1 | head -50"),
@@ -200,6 +216,7 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
     fun commit(message: String) {
         val trimmed = message.trim()
         if (trimmed.isEmpty()) return
+        if (!envReady()) return
         _state.update { it.copy(busy = "Committing…") }
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             val git = graph.settings.gitConfig()
@@ -226,6 +243,7 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
     }
 
     fun push() {
+        if (!envReady()) return
         _state.update { it.copy(busy = "Pushing…") }
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             val token = graph.settings.gitConfig().githubToken
