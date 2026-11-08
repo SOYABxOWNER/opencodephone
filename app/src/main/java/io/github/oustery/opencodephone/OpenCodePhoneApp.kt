@@ -42,7 +42,7 @@ class AppGraph(context: Application) {
 
     val bootstrap: BootstrapManager = BootstrapManager(layout, runtime, appScope, settings.opencodeVersionPin())
 
-    private val _serverConfiguration = MutableStateFlow(settings.serverConfig())
+    private val _serverConfiguration = MutableStateFlow(settings.effectiveServerConfig())
     val serverConfiguration: StateFlow<ServerConfig> = _serverConfiguration
 
     init {
@@ -62,7 +62,7 @@ class AppGraph(context: Application) {
     }
 
     suspend fun ensureLocalServer(restart: Boolean = false) {
-        val cfg = settings.serverConfig()
+        val cfg = settings.effectiveServerConfig()
         if (cfg.mode != ServerMode.LOCAL) return
         // Establish foreground importance before launching the child, not only
         // after health becomes green (which used to leave startup unprotected).
@@ -85,13 +85,39 @@ class AppGraph(context: Application) {
     var client: OpenCodeClient = OpenCodeClient(config = buildClientConfig(settings))
         private set
 
+    private val credentialsLock = kotlinx.coroutines.sync.Mutex()
+    val credentialsRevision = MutableStateFlow(0L)
+    fun credentialsChanged() { credentialsRevision.value += 1 }
+
+    suspend fun syncProviderCredentials(target: OpenCodeClient) = withContext(Dispatchers.IO) {
+        credentialsLock.lock()
+        try {
+            val cfg = serverConfiguration.value
+            val expected = ConnectionConfig(if (cfg.mode == ServerMode.LOCAL) "127.0.0.1" else cfg.host,
+                cfg.port, cfg.username, cfg.password)
+            if (target.config != expected || !settings.providerSyncAllowed(cfg)) return@withContext
+            val keys = settings.providerKeys()
+            var managed = settings.managedProviders(cfg)
+            for (id in managed - keys.map { it.providerId }.toSet()) {
+                target.removeProviderAuth(id)
+                managed = managed - id
+                settings.recordManagedProviders(cfg, managed)
+            }
+            for (key in keys) {
+                settings.recordManagedProviders(cfg, managed + key.providerId)
+                managed = managed + key.providerId
+                target.setProviderAuth(key.providerId, target.apiCredentials(key.providerId, key.apiKey))
+            }
+        } finally { credentialsLock.unlock() }
+    }
+
     fun refreshClient() {
         client = OpenCodeClient(config = buildClientConfig(settings))
-        _serverConfiguration.value = settings.serverConfig()
+        _serverConfiguration.value = settings.effectiveServerConfig()
     }
 
     private fun buildClientConfig(settings: SettingsStore): ConnectionConfig {
-        val cfg = settings.serverConfig()
+        val cfg = settings.effectiveServerConfig()
         return if (cfg.mode == ServerMode.REMOTE) {
             ConnectionConfig(cfg.host, cfg.port, cfg.username, cfg.password)
         } else {
@@ -100,7 +126,7 @@ class AppGraph(context: Application) {
     }
 
     companion object {
-        fun buildClientConfig(settings: SettingsStore) = with(settings.serverConfig()) {
+        fun buildClientConfig(settings: SettingsStore) = with(settings.effectiveServerConfig()) {
             if (mode == ServerMode.REMOTE) {
                 ConnectionConfig(host, port, username, password)
             } else {
@@ -110,16 +136,42 @@ class AppGraph(context: Application) {
     }
 }
 
-class OpenCodePhoneApp : Application() {
+sealed interface AppStartup {
+    data object Loading : AppStartup
+    data object Failed : AppStartup
+    data class Ready(val graph: AppGraph) : AppStartup
+}
 
-    lateinit var graph: AppGraph
-        private set
+class OpenCodePhoneApp : Application() {
+    private val startupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val _startup = MutableStateFlow<AppStartup>(AppStartup.Loading)
+    val startup: StateFlow<AppStartup> = _startup
+    val graphOrNull: AppGraph? get() = (_startup.value as? AppStartup.Ready)?.graph
+    private var startupJob: kotlinx.coroutines.Job? = null
 
     override fun onCreate() {
         super.onCreate()
-        graph = AppGraph(this)
-        // Auto-run bootstrap when the environment is not installed yet;
-        // the UI observes state and shows progress.
-        graph.bootstrap.start()
+        retryStartup()
+    }
+
+    @Synchronized
+    fun retryStartup(resetSecureSettings: Boolean = false) {
+        if (resetSecureSettings && _startup.value != AppStartup.Failed) return
+        if (startupJob?.isActive == true || graphOrNull != null) return
+        _startup.value = AppStartup.Loading
+        startupJob = startupScope.launch {
+            try {
+                if (resetSecureSettings) SettingsStore.resetEncryptedSettings(this@OpenCodePhoneApp)
+                val graph = AppGraph(this@OpenCodePhoneApp)
+                _startup.value = AppStartup.Ready(graph)
+                graph.bootstrap.start()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Do not delete/recreate encrypted prefs or log credential-bearing data.
+                android.util.Log.e("OpenCodePhone", "Startup failed (${e.javaClass.simpleName})")
+                _startup.value = AppStartup.Failed
+            }
+        }
     }
 }

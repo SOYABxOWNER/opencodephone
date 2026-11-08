@@ -72,6 +72,7 @@ fun FilesScreen(graph: AppGraph) {
         )
 
         ScreenBody {
+            state.gitProject?.let { Text(it, modifier = Modifier.padding(horizontal = 16.dp)) }
             state.gitBranch?.let { branch ->
                 GitBar(
                     branch = branch,

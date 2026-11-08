@@ -16,7 +16,11 @@ import io.github.oustery.opencodephone.core.settings.ModelSelection
 import io.github.oustery.opencodephone.core.settings.ServerMode
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
+import io.github.oustery.opencodephone.core.opencode.OpenCodeClient
+import io.github.oustery.opencodephone.core.opencode.OpenCodeApiException
+import io.github.oustery.opencodephone.core.opencode.throttledInvalidations
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -59,15 +63,24 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
     val state: StateFlow<ChatUiState> = _state
 
     private var eventsJob: Job? = null
+    private var messagesJob: Job? = null
+    private var endpointEpoch = 0L
+    private var activeClient = graph.client
 
     private val reloadSignal = MutableSharedFlow<Unit>(extraBufferCapacity = 16)
 
     init {
         // React to server lifecycle.
         viewModelScope.launch {
-            combine(graph.serverConfiguration, graph.runtime.serverState) { cfg, state -> cfg.mode to state }
+            combine(graph.serverConfiguration, graph.runtime.serverState, graph.credentialsRevision) { cfg, state, _ -> cfg.mode to state }
                 .collectLatest { (mode, serverState) ->
                     eventsJob?.cancel()
+                    messagesJob?.cancel()
+                    endpointEpoch++
+                    if (activeClient !== graph.client) {
+                        activeClient = graph.client
+                        _state.update { ChatUiState(draft = it.draft) }
+                    }
                     if (mode == ServerMode.REMOTE) {
                         connect()
                     } else when (serverState) {
@@ -79,10 +92,9 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                 }
         }
 
-        // Debounced message reload driven by SSE events.
+        // Throttled/coalesced reloads make progress even during continuous token streams.
         viewModelScope.launch {
-            reloadSignal.collectLatest {
-                delay(200)
+            reloadSignal.throttledInvalidations().collect {
                 _state.value.activeSessionId?.let { loadMessages(it) }
             }
         }
@@ -91,7 +103,7 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
     private suspend fun connect() {
         _state.update { it.copy(connection = ChatConnection.CONNECTING, error = null) }
         try {
-            val health = graph.client.health()
+            val health = activeClient.health()
             syncProviderKeys()
             loadProviders()
             loadSessions()
@@ -109,58 +121,78 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
     }
 
     /** Push locally stored provider keys into the opencode server auth store. */
-    private suspend fun syncProviderKeys() {
-        graph.settings.providerKeys().forEach { key ->
-            runCatching {
-                graph.client.setProviderAuth(
-                    key.providerId,
-                    buildJsonObject {
-                        put("type", "api")
-                        put("key", key.apiKey)
-                    },
-                )
-            }
-        }
-    }
+    private suspend fun syncProviderKeys() = graph.syncProviderCredentials(activeClient)
 
     private suspend fun loadProviders() {
-        try {
-            val providers = graph.client.listProviders()
-            val selection = graph.settings.modelSelection()
-            _state.update {
-                it.copy(
-                    providers = providers.all,
-                    connectedProviders = providers.connected,
-                    modelSelection = selection.takeIf { s -> s.providerId.isNotBlank() },
-                )
-            }
-        } catch (_: Exception) {
+        val providers = activeClient.listProviders()
+        val selection = graph.settings.modelSelection()
+        _state.update {
+            it.copy(
+                providers = providers.all,
+                connectedProviders = providers.connected,
+                modelSelection = selection.takeIf { s -> s.providerId.isNotBlank() },
+            )
         }
     }
 
     private suspend fun loadSessions() {
-        try {
-            val sessions = graph.client.listSessions()
-                .sortedByDescending { it.time?.created ?: 0L }
-            _state.update { state ->
-                val active = state.activeSessionId ?: sessions.firstOrNull()?.id
-                state.copy(sessions = sessions, activeSessionId = active)
+        val sessions = activeClient.listSessions().sortedByDescending { it.time?.created ?: 0L }
+        _state.update { state ->
+            val active = state.activeSessionId?.takeIf { id -> sessions.any { it.id == id } }
+                ?: sessions.firstOrNull()?.id
+            state.copy(sessions = sessions, activeSessionId = active)
+        }
+        _state.value.activeSessionId?.let { loadMessages(it, required = true) }
+    }
+
+    private suspend fun reconcileStatus(client: OpenCodeClient = activeClient) {
+        val ticket = endpointEpoch
+        val statuses = client.sessionStatuses()
+        val permissions = client.pendingPermissions()
+        if (ticket != endpointEpoch) return
+        _state.update { state ->
+            val status = (state.activeSessionId?.let { statuses[it] } as? JsonObject)?.get("type")?.let {
+                (it as? kotlinx.serialization.json.JsonPrimitive)?.content
             }
-            _state.value.activeSessionId?.let { loadMessages(it) }
-        } catch (e: Exception) {
-            _state.update { it.copy(error = e.message) }
+            state.copy(busy = status == "busy" || status == "retry",
+                permission = permissions.firstOrNull { it.sessionId == state.activeSessionId })
         }
     }
 
     private fun subscribeEvents() {
         eventsJob?.cancel()
+        val client = activeClient
+        val ticket = endpointEpoch
         eventsJob = viewModelScope.launch {
-            try {
-                graph.client.events().collect { event ->
-                    handleEvent(event)
+            var attempts = 0
+            while (isActive && ticket == endpointEpoch) {
+                try {
+                    if (attempts > 0) {
+                        _state.update { it.copy(connection = ChatConnection.CONNECTING) }
+                        client.health()
+                        loadProviders()
+                        loadSessions()
+                        reconcileStatus(client)
+                        _state.update { it.copy(connection = ChatConnection.CONNECTED, error = null) }
+                    }
+                    client.events().collect { event ->
+                        if (ticket == endpointEpoch) {
+                            if (event.type == "server.connected") {
+                                reconcileStatus(client)
+                                reloadSignal.tryEmit(Unit)
+                                attempts = 0
+                            } else handleEvent(event)
+                        }
+                    }
+                    throw java.io.IOException("Event stream closed")
+                } catch (e: CancellationException) { throw e }
+                catch (e: Exception) {
+                    if (ticket != endpointEpoch) return@launch
+                    _state.update { it.copy(connection = ChatConnection.ERROR, error = e.message, busy = false) }
+                    if (e is OpenCodeApiException && e.code in listOf(401, 403)) return@launch
                 }
-            } catch (_: Exception) {
-                // Stream drop — connection state recovers via serverState.
+                attempts++
+                delay(minOf(30_000L, 500L * (1L shl attempts.coerceAtMost(6))) + kotlin.random.Random.nextLong(250))
             }
         }
     }
@@ -190,29 +222,34 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
 
             event.type == "permission.updated" || event.type == "permission.asked" -> {
                 val request = OcJson.permissionRequest(event.properties)
-                if (request != null) {
+                if (request != null && request.sessionId == _state.value.activeSessionId) {
                     _state.update { it.copy(permission = request) }
                 }
             }
 
             event.type == "permission.replied" -> {
-                _state.update { it.copy(permission = null) }
+                reconcileStatus()
             }
         }
     }
 
     private suspend fun loadSessionsQuiet() {
         try {
-            val sessions = graph.client.listSessions()
+            val sessions = activeClient.listSessions()
                 .sortedByDescending { it.time?.created ?: 0L }
             _state.update { it.copy(sessions = sessions) }
-        } catch (_: Exception) {
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            _state.update { it.copy(error = e.message) }
         }
     }
 
-    private suspend fun loadMessages(sessionId: String) {
+    private suspend fun loadMessages(sessionId: String, required: Boolean = false) {
+        val ticket = endpointEpoch
+        val client = activeClient
         try {
-            val raw: List<MessageWithParts> = graph.client.listMessages(sessionId)
+            val raw: List<MessageWithParts> = client.listMessages(sessionId)
             val ui = raw.map { msg ->
                 UiMessage(
                     id = msg.info.id,
@@ -220,9 +257,12 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                     parts = Parts.uiParts(msg.parts),
                 )
             }.filter { it.parts.isNotEmpty() }
-            _state.update { it.copy(messages = ui) }
+            _state.update { if (ticket == endpointEpoch && it.activeSessionId == sessionId) it.copy(messages = ui) else it }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             _state.update { it.copy(error = e.message) }
+            if (required) throw e
         }
     }
 
@@ -231,14 +271,20 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
     fun updateDraft(value: String) = _state.update { it.copy(draft = value) }
 
     fun newSession() {
+        val client = activeClient
+        val ticket = endpointEpoch
         viewModelScope.launch {
             try {
-                val session = graph.client.createSession(null)
+                val session = client.createSession(null)
+                if (ticket != endpointEpoch) return@launch
                 _state.update {
                     it.copy(activeSessionId = session.id, messages = emptyList(), showSessions = false)
                 }
                 loadSessionsQuiet()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
+                if (ticket != endpointEpoch) return@launch
                 _state.update { it.copy(error = e.message) }
             }
         }
@@ -246,7 +292,13 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
 
     fun selectSession(sessionId: String) {
         _state.update { it.copy(activeSessionId = sessionId, showSessions = false, messages = emptyList()) }
-        viewModelScope.launch { loadMessages(sessionId) }
+        messagesJob?.cancel()
+        messagesJob = viewModelScope.launch {
+            loadMessages(sessionId)
+            try { reconcileStatus() }
+            catch (e: CancellationException) { throw e }
+            catch (e: Exception) { _state.update { it.copy(error = e.message) } }
+        }
     }
 
     fun send() {
@@ -255,17 +307,22 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
         val text = current.draft.trim()
         if (text.isEmpty()) return
         _state.update { it.copy(draft = "", busy = true) }
+        val client = activeClient
+        val ticket = endpointEpoch
         viewModelScope.launch {
             try {
                 val selection = current.modelSelection
-                graph.client.promptAsync(
+                client.promptAsync(
                     sessionId = sessionId,
                     text = text,
                     providerId = selection?.providerId,
                     modelId = selection?.modelId,
                     agent = null,
                 )
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
+                if (ticket != endpointEpoch) return@launch
                 _state.update { it.copy(error = e.message, busy = false) }
             }
         }
@@ -273,10 +330,15 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
 
     fun abort() {
         val sessionId = _state.value.activeSessionId ?: return
+        val client = activeClient
+        val ticket = endpointEpoch
         viewModelScope.launch {
             try {
-                graph.client.abort(sessionId)
+                client.abort(sessionId)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
+                if (ticket != endpointEpoch) return@launch
                 _state.update { it.copy(error = e.message) }
             }
         }
@@ -284,11 +346,16 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
 
     fun respondPermission(response: String) {
         val request = _state.value.permission ?: return
+        val client = activeClient
+        val ticket = endpointEpoch
         viewModelScope.launch {
             try {
-                graph.client.respondPermission(request.sessionId, request.permissionId, response)
-                _state.update { it.copy(permission = null) }
+                client.respondPermission(request.sessionId, request.permissionId, response)
+                if (ticket == endpointEpoch) reconcileStatus(client)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
+                if (ticket != endpointEpoch) return@launch
                 _state.update { it.copy(error = e.message) }
             }
         }

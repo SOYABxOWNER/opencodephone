@@ -11,6 +11,7 @@ import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import io.github.oustery.opencodephone.core.linuxenv.ServerState
 import io.github.oustery.opencodephone.core.model.BootstrapPhase
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
@@ -25,9 +26,20 @@ class EnvService : LifecycleService() {
 
     override fun onCreate() {
         super.onCreate()
-        graph = (application as OpenCodePhoneApp).graph
         createChannel()
         startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.env_service_starting)))
+        lifecycleScope.launch {
+            val startup = (application as OpenCodePhoneApp).startup.first { it !is AppStartup.Loading }
+            if (startup !is AppStartup.Ready) {
+                stopSelf()
+                return@launch
+            }
+            graph = startup.graph
+            observeGraph()
+        }
+    }
+
+    private fun observeGraph() {
         lifecycleScope.launch {
             graph.runtime.serverState.collectLatest { state ->
                 updateNotification(when (state) {
@@ -63,7 +75,7 @@ class EnvService : LifecycleService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
-        return START_STICKY
+        return if ((application as OpenCodePhoneApp).startup.value is AppStartup.Failed) START_NOT_STICKY else START_STICKY
     }
 
     // Child lifetime is owned by AppGraph/ManagedServer, not notification

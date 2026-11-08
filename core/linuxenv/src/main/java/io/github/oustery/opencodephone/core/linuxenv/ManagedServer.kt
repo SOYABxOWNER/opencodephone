@@ -2,6 +2,8 @@ package io.github.oustery.opencodephone.core.linuxenv
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,6 +22,7 @@ class ManagedServer(
 ) {
     private val startLock = Mutex()
     private val guard = Any()
+    private var generation = 0L
     private var process: Process? = null
     private var config: ServerLaunchConfig? = null
     private val lines = ArrayDeque<String>()
@@ -43,20 +46,43 @@ class ManagedServer(
                     !restart && config == options && process?.isAlive == true && _state.value is ServerState.Running
                 }
                 if (reuse) return@withLock
-                stop()
-                synchronized(guard) {
+                val (ticket, previous) = synchronized(guard) {
+                    generation++
+                    val old = process
+                    process = null
+                    config = null
                     lines.clear()
                     _log.value = ""
                     _state.value = ServerState.Starting("Starting OpenCode on :${options.port}")
+                    generation to old
                 }
+                previous?.let { terminate(it) }
+                if (synchronized(guard) { generation != ticket }) return@withLock
                 val proc = try {
                     require(options.port in 1..65535) { "Port must be between 1 and 65535" }
                     launch(options)
+                } catch (e: CancellationException) {
+                    synchronized(guard) {
+                        if (generation == ticket) _state.value = ServerState.Stopped
+                    }
+                    throw e
                 } catch (e: Exception) {
-                    _state.value = ServerState.Failed("Cannot start OpenCode: ${e.message}")
+                    synchronized(guard) {
+                        if (generation == ticket) _state.value = ServerState.Failed("Cannot start OpenCode: ${e.message}")
+                    }
                     return@withLock
                 }
-                synchronized(guard) { process = proc; config = options }
+                val accepted = synchronized(guard) {
+                    if (ticket != generation) false else {
+                        process = proc
+                        config = options
+                        true
+                    }
+                }
+                if (!accepted) {
+                    terminate(proc)
+                    return@withLock
+                }
                 Thread({
                     try {
                         proc.inputStream.bufferedReader().useLines { output -> output.forEach { log(proc, it) } }
@@ -76,6 +102,7 @@ class ManagedServer(
                 var lastFailure = "API did not respond"
                 val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs)
                 try {
+                    currentCoroutineContext().ensureActive()
                     while (System.nanoTime() < deadline && proc.isAlive && synchronized(guard) { process === proc }) {
                         try {
                             // A 200 HTML page is not readiness. Probe must parse and validate health JSON.
@@ -120,6 +147,7 @@ class ManagedServer(
 
     fun stop() {
         val proc = synchronized(guard) {
+            generation++
             val old = process
             process = null
             config = null

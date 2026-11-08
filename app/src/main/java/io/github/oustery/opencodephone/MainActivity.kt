@@ -1,5 +1,9 @@
 package io.github.oustery.opencodephone
 
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
 import android.Manifest
 import android.os.Build
 import android.os.Bundle
@@ -21,10 +25,47 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= 33) {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
-        val graph = (application as OpenCodePhoneApp).graph
+        val app = application as OpenCodePhoneApp
         setContent {
             OpenCodePhoneTheme {
-                AppRoot(graph = graph)
+                val startup by app.startup.collectAsStateWithLifecycle()
+                val resetConfirm = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+                if (resetConfirm.value && startup == AppStartup.Failed) {
+                    androidx.compose.material3.AlertDialog(
+                        onDismissRequest = { resetConfirm.value = false },
+                        title = { androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(R.string.startup_reset)) },
+                        text = { androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(R.string.startup_reset_warning)) },
+                        confirmButton = {
+                            androidx.compose.material3.TextButton(onClick = {
+                                resetConfirm.value = false
+                                app.retryStartup(resetSecureSettings = true)
+                            }) { androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(R.string.startup_reset)) }
+                        },
+                        dismissButton = {
+                            androidx.compose.material3.TextButton(onClick = { resetConfirm.value = false }) {
+                                androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(R.string.action_cancel))
+                            }
+                        },
+                    )
+                }
+                when (val state = startup) {
+                    is AppStartup.Ready -> AppRoot(graph = state.graph)
+                    AppStartup.Loading -> androidx.compose.material3.Text(
+                        androidx.compose.ui.res.stringResource(R.string.startup_loading),
+                        modifier = androidx.compose.ui.Modifier.padding(32.dp),
+                    )
+                    AppStartup.Failed -> androidx.compose.foundation.layout.Column(
+                        modifier = androidx.compose.ui.Modifier.padding(32.dp),
+                    ) {
+                        androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(R.string.startup_failed))
+                        androidx.compose.material3.Button(onClick = { app.retryStartup() }) {
+                            androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(R.string.action_retry))
+                        }
+                        androidx.compose.material3.TextButton(onClick = { resetConfirm.value = true }) {
+                            androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(R.string.startup_reset))
+                        }
+                    }
+                }
             }
         }
     }
@@ -32,7 +73,7 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         // Keep the environment alive while backgrounded.
-        val graph = (application as OpenCodePhoneApp).graph
+        val graph = (application as OpenCodePhoneApp).graphOrNull ?: return
         if (graph.runtime.serverState.value is io.github.oustery.opencodephone.core.linuxenv.ServerState.Running) {
             ContextCompat.startForegroundService(this, android.content.Intent(this, EnvService::class.java))
         }

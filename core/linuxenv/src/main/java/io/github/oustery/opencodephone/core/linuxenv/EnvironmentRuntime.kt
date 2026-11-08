@@ -26,17 +26,33 @@ class EnvironmentRuntime(
     private val layout: EnvLayout,
 ) {
 
+    private val interactiveGuard = Any()
+    private val interactive = mutableSetOf<Process>()
+    private var interactiveBlocked = false
+
+    fun startInteractive(builder: ProcessBuilder): Process = synchronized(interactiveGuard) {
+        check(!interactiveBlocked && layout.isInstalled()) { "Environment is not ready" }
+        interactive.removeAll { !it.isAlive }
+        builder.start().also { interactive.add(it) }
+    }
+
+    fun stopInteractive() = synchronized(interactiveGuard) {
+        interactiveBlocked = true
+        interactive.forEach { proc ->
+            proc.destroy()
+            if (!proc.waitFor(3, TimeUnit.SECONDS)) { proc.destroyForcibly(); proc.waitFor(3, TimeUnit.SECONDS) }
+        }
+        interactive.clear()
+    }
+
+    fun resumeInteractive() = synchronized(interactiveGuard) { interactiveBlocked = false }
+
     private val managedServer = ManagedServer(
         launch = { cfg ->
             check(layout.isInstalled() && layout.opencodeBin().isFile) {
                 "Local CLI is not installed on this device. Finish setup or select a remote V1 server."
             }
-            val env = buildMap {
-                if (!cfg.password.isNullOrBlank()) {
-                    put("OPENCODE_SERVER_PASSWORD", cfg.password)
-                    put("OPENCODE_SERVER_USERNAME", cfg.username?.ifBlank { "opencode" } ?: "opencode")
-                }
-            }
+            val env = localServerEnvironment(cfg)
             process(
                 listOf("opencode", "serve", "--hostname", "127.0.0.1", "--port", cfg.port.toString()),
                 env = env, cwd = PRootCommand.WORKSPACE_MOUNT, mergeOutput = true,
@@ -97,30 +113,9 @@ class EnvironmentRuntime(
         timeoutMs: Long = 10 * 60_000,
         onLine: ((String) -> Unit)? = null,
         prootVerbosity: Int = 0,
-    ): ExecResult = withContext(Dispatchers.IO) {
-        val proc = process(command, env, cwd, mergeOutput = true, prootVerbosity = prootVerbosity).start()
-        val output = StringBuilder()
-        val reader = Thread {
-            proc.inputStream.bufferedReader().forEachLine { line ->
-                synchronized(output) { output.appendLine(line) }
-                onLine?.invoke(line)
-            }
-        }
-        reader.start()
-        // waitFor() without a deadline blocks the IO thread and cannot be
-        // interrupted by withTimeoutOrNull. Use the native timed wait instead.
-        val finished = proc.waitFor(timeoutMs, TimeUnit.MILLISECONDS)
-        if (!finished) {
-            proc.destroy()
-            proc.waitFor(3, TimeUnit.SECONDS)
-            proc.destroyForcibly()
-        }
-        reader.join(2000)
-        ExecResult(
-            exitCode = if (finished) proc.exitValue() else -1,
-            output = synchronized(output) { output.toString() }.takeLast(20_000),
-        )
-    }
+    ): ExecResult = runCapturedProcess(
+        process(command, env, cwd, mergeOutput = true, prootVerbosity = prootVerbosity), timeoutMs, onLine,
+    )
 
     suspend fun startServer(
         port: Int,

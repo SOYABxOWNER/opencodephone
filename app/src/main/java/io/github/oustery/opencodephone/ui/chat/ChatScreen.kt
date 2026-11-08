@@ -417,9 +417,9 @@ private fun ModelsSheet(vm: ChatViewModel, state: ChatUiState) {
             )
         }
         LazyColumn(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
-            items(state.providers, key = { it.id }) { provider ->
-                val connected = provider.id in state.connectedProviders
-                Column {
+            state.providers.forEach { provider ->
+                item(key = "provider:${provider.id}") {
+                    val connected = provider.id in state.connectedProviders
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(provider.name, style = MaterialTheme.typography.titleSmall)
                         OcStatusChip(
@@ -428,14 +428,17 @@ private fun ModelsSheet(vm: ChatViewModel, state: ChatUiState) {
                             tone = if (connected) OcChipTone.PRIMARY else OcChipTone.NEUTRAL,
                         )
                     }
-                    provider.models.values.take(12).forEach { model ->
-                        ModelRow(
-                            model = model,
-                            selected = state.modelSelection?.modelId == model.id &&
-                                state.modelSelection?.providerId == provider.id,
-                            onClick = { vm.selectModel(provider.id, model.id) },
-                        )
-                    }
+                }
+                items(
+                    provider.models.values.toList(),
+                    key = { "model:${provider.id.length}:${provider.id}:${it.id}" },
+                ) { model ->
+                    ModelRow(
+                        model = model,
+                        selected = state.modelSelection?.modelId == model.id &&
+                            state.modelSelection?.providerId == provider.id,
+                        onClick = { vm.selectModel(provider.id, model.id) },
+                    )
                 }
             }
         }

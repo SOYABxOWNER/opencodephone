@@ -21,11 +21,15 @@ data class SettingsUiState(
     val providers: List<ProviderKey> = emptyList(),
     val git: GitConfig = GitConfig(),
     val opencodePin: String = "",
+    val serverPortText: String = "4096",
+    val providerSyncAllowed: Boolean = false,
     val connectionTest: String? = null,
+    val serverDirty: Boolean = false,
     val bootstrap: BootstrapState = BootstrapState(),
     val serverStateLabel: String = "",
     val serverError: String? = null,
     val serverLog: String = "",
+    val legacyPlaintextSettings: Boolean = false,
     val showAddProvider: Boolean = false,
     val showReinstallConfirm: Boolean = false,
 )
@@ -64,12 +68,16 @@ class SettingsViewModel(private val graph: AppGraph) : ViewModel() {
         }
     }
 
-    fun restartServer() = graph.restartLocalServer()
+    fun restartServer() { if (!_state.value.serverDirty) graph.restartLocalServer() }
 
     fun reload() {
         _state.update {
             it.copy(
+                serverDirty = false,
+                legacyPlaintextSettings = settings.hasLegacyPlaintextSettings,
                 server = settings.serverConfig(),
+                serverPortText = settings.serverConfig().port.toString(),
+                providerSyncAllowed = settings.providerSyncAllowed(settings.serverConfig()),
                 providers = settings.providerKeys(),
                 git = settings.gitConfig(),
                 opencodePin = settings.opencodeVersionPin(),
@@ -80,27 +88,53 @@ class SettingsViewModel(private val graph: AppGraph) : ViewModel() {
     // ------------------------------------------------------------- Server
 
     fun updateServer(transform: (ServerConfig) -> ServerConfig) {
-        val updated = transform(_state.value.server)
-        if (updated.port !in 1..65535) return
-        settings.setServerConfig(updated)
-        graph.refreshClient()
-        _state.update { it.copy(server = updated) }
+        _state.update { it.copy(serverDirty = true, server = transform(it.server), providerSyncAllowed = false) }
     }
-
     fun setMode(mode: ServerMode) = updateServer { it.copy(mode = mode) }
-
     fun setHost(value: String) = updateServer { it.copy(host = value.trim()) }
-
-    fun setPort(value: String) {
-        val port = value.toIntOrNull() ?: return
-        updateServer { it.copy(port = port) }
-    }
-
+    fun setPort(value: String) = _state.update { it.copy(serverDirty = true, serverPortText = value, providerSyncAllowed = false) }
     fun setUsername(value: String) = updateServer { it.copy(username = value.trim()) }
-
     fun setPassword(value: String) = updateServer { it.copy(password = value) }
+    fun setProviderSyncAllowed(value: Boolean) = _state.update { it.copy(serverDirty = true, providerSyncAllowed = value) }
+
+    fun applyServer() {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val state = _state.value
+                val port = state.serverPortText.toIntOrNull()
+                require(port != null && port in 1..65535) { "Port must be between 1 and 65535" }
+                val cfg = state.server.copy(port = port)
+                if (cfg.mode == ServerMode.REMOTE) {
+                    io.github.oustery.opencodephone.core.opencode.ConnectionConfig(cfg.host, port).baseUrl
+                }
+                settings.setServerConfig(cfg)
+                settings.setProviderSyncAllowed(cfg, state.providerSyncAllowed)
+                graph.refreshClient()
+                graph.credentialsChanged()
+                _state.update {
+                    val changed = it.server != state.server || it.serverPortText != state.serverPortText ||
+                        it.providerSyncAllowed != state.providerSyncAllowed
+                    it.copy(serverDirty = changed, server = if (changed) it.server else cfg, connectionTest = "Applied")
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) { _state.update { it.copy(connectionTest = e.message) } }
+        }
+    }
+    fun cancelServerChanges() = reload()
+
+    fun importLegacySettings() {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                settings.importLegacySettings()
+                graph.refreshClient()
+                reload()
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) { _state.update { it.copy(connectionTest = e.message) } }
+        }
+    }
 
     fun testConnection() {
+        if (_state.value.serverDirty) return
         _state.update { it.copy(connectionTest = "…") }
         viewModelScope.launch {
             val tempClient = OpenCodeClient(config = AppGraph.buildClientConfig(settings))
@@ -133,12 +167,14 @@ class SettingsViewModel(private val graph: AppGraph) : ViewModel() {
     fun saveProviderKey(providerId: String, apiKey: String) {
         if (providerId.isBlank() || apiKey.isBlank()) return
         settings.setProviderKey(providerId.trim().lowercase(), apiKey.trim())
+        graph.credentialsChanged()
         reload()
         _state.update { it.copy(showAddProvider = false) }
     }
 
     fun removeProviderKey(providerId: String) {
         settings.removeProviderKey(providerId)
+        graph.credentialsChanged()
         reload()
     }
 
@@ -170,8 +206,13 @@ class SettingsViewModel(private val graph: AppGraph) : ViewModel() {
 
     fun reinstallEnvironment() {
         _state.update { it.copy(showReinstallConfirm = false) }
-        graph.bootstrap.reset()
-        graph.bootstrap.start(settings.opencodeVersionPin())
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                graph.bootstrap.reset()
+                graph.bootstrap.start(settings.opencodeVersionPin())
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) { _state.update { it.copy(connectionTest = e.message) } }
+        }
     }
 
     fun workspacePath(): String = graph.layout.workspaceDir.absolutePath

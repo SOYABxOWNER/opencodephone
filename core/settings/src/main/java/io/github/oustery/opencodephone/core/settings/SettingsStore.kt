@@ -34,12 +34,12 @@ data class ModelSelection(
 
 /**
  * Encrypted settings storage (Android Keystore-backed).
- * Falls back to plain preferences if the hardware keystore is unavailable —
- * acceptable for a development tool, documented in ADR-003.
+ * Fails closed if Keystore cannot be opened. Startup offers retry without
+ * deleting settings; credentials are never written to a plaintext fallback.
  */
-class SettingsStore(context: Context) {
+class SettingsStore(private val context: Context) {
 
-    private val prefs: SharedPreferences = try {
+    private val prefs: SharedPreferences = openSecureSettings {
         val masterKey = MasterKey.Builder(context)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
             .build()
@@ -50,9 +50,51 @@ class SettingsStore(context: Context) {
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
         )
-    } catch (_: Exception) {
-        context.getSharedPreferences("opencodephone_fallback", Context.MODE_PRIVATE)
     }
+
+    // Detect legacy data without loading it or silently preferring stale plaintext values.
+    val hasLegacyPlaintextSettings: Boolean get() = java.io.File(
+        context.applicationInfo.dataDir, "shared_prefs/opencodephone_fallback.xml",
+    ).exists()
+
+    /** Explicit, user-confirmed import. Existing secure values win; secrets are never exported. */
+    fun importLegacySettings() {
+        val old = context.getSharedPreferences("opencodephone_fallback", Context.MODE_PRIVATE)
+        val allowed = setOf(KEY_SERVER_MODE, KEY_SERVER_HOST, KEY_SERVER_PORT, KEY_SERVER_USERNAME,
+            KEY_SERVER_PASSWORD, KEY_PROVIDER_KEYS, KEY_MODEL_PROVIDER, KEY_MODEL_ID,
+            KEY_GIT_NAME, KEY_GIT_EMAIL, KEY_GIT_TOKEN, KEY_OPENCODE_PIN)
+        val editor = prefs.edit()
+        for ((key, value) in old.all) if (key in allowed && !prefs.contains(key)) {
+            when (value) {
+                is String -> editor.putString(key, value)
+                is Int -> editor.putInt(key, value)
+            }
+        }
+        check(editor.commit()) { "Secure import failed; legacy settings retained" }
+        check(old.edit().clear().commit()) { "Secure import saved; legacy cleanup must be retried" }
+        check(context.deleteSharedPreferences("opencodephone_fallback")) { "Legacy cleanup must be retried" }
+    }
+
+    private fun endpoint(config: ServerConfig): String = if (config.mode == ServerMode.LOCAL) "local"
+        else "https:${config.host.lowercase()}:${config.port}:${config.username}"
+    fun providerSyncAllowed(config: ServerConfig): Boolean = config.mode == ServerMode.LOCAL ||
+        prefs.getBoolean("consent:${endpoint(config)}", false)
+    fun setProviderSyncAllowed(config: ServerConfig, allowed: Boolean) = edit {
+        it.putBoolean("consent:${endpoint(config)}", allowed)
+    }
+    fun managedProviders(config: ServerConfig): Set<String> =
+        prefs.getStringSet("managed:${endpoint(config)}", emptySet())?.toSet() ?: emptySet()
+    fun recordManagedProviders(config: ServerConfig, providers: Set<String>) {
+        check(prefs.edit().putStringSet("managed:${endpoint(config)}", providers).commit())
+    }
+
+    private val localSecret = PersistentLocalSecret(
+        read = { prefs.getString(KEY_LOCAL_SERVER_SECRET, null) },
+        persist = { prefs.edit().putString(KEY_LOCAL_SERVER_SECRET, it).commit() },
+    )
+
+    /** The local API never uses a blank password or reuses a remote credential. */
+    fun effectiveServerConfig(): ServerConfig = effectiveServerConfig(serverConfig(), localSecret::get)
 
     private fun edit(block: (SharedPreferences.Editor) -> Unit) {
         val editor = prefs.edit()
@@ -139,19 +181,27 @@ class SettingsStore(context: Context) {
 
     fun setBootstrapCompleted() = edit { it.putBoolean(KEY_BOOTSTRAP_DONE, true) }
 
-    private companion object {
-        const val KEY_SERVER_MODE = "server_mode"
-        const val KEY_SERVER_HOST = "server_host"
-        const val KEY_SERVER_PORT = "server_port"
-        const val KEY_SERVER_USERNAME = "server_username"
-        const val KEY_SERVER_PASSWORD = "server_password"
-        const val KEY_PROVIDER_KEYS = "provider_keys"
-        const val KEY_MODEL_PROVIDER = "model_provider"
-        const val KEY_MODEL_ID = "model_id"
-        const val KEY_GIT_NAME = "git_user_name"
-        const val KEY_GIT_EMAIL = "git_user_email"
-        const val KEY_GIT_TOKEN = "git_github_token"
-        const val KEY_OPENCODE_PIN = "opencode_version_pin"
-        const val KEY_BOOTSTRAP_DONE = "bootstrap_completed"
+    companion object {
+        /** Destructive recovery must only be invoked after explicit UI confirmation. */
+        fun resetEncryptedSettings(context: Context) {
+            check(context.deleteSharedPreferences("opencodephone_secure")) { "Cannot remove encrypted settings" }
+            val keys = java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+            keys.deleteEntry(MasterKey.DEFAULT_MASTER_KEY_ALIAS)
+        }
+
+        private const val KEY_LOCAL_SERVER_SECRET = "local_server_secret"
+        private const val KEY_SERVER_MODE = "server_mode"
+        private const val KEY_SERVER_HOST = "server_host"
+        private const val KEY_SERVER_PORT = "server_port"
+        private const val KEY_SERVER_USERNAME = "server_username"
+        private const val KEY_SERVER_PASSWORD = "server_password"
+        private const val KEY_PROVIDER_KEYS = "provider_keys"
+        private const val KEY_MODEL_PROVIDER = "model_provider"
+        private const val KEY_MODEL_ID = "model_id"
+        private const val KEY_GIT_NAME = "git_user_name"
+        private const val KEY_GIT_EMAIL = "git_user_email"
+        private const val KEY_GIT_TOKEN = "git_github_token"
+        private const val KEY_OPENCODE_PIN = "opencode_version_pin"
+        private const val KEY_BOOTSTRAP_DONE = "bootstrap_completed"
     }
 }

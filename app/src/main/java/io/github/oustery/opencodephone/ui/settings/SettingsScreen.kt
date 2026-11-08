@@ -1,5 +1,8 @@
 package io.github.oustery.opencodephone.ui.settings
 
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -63,6 +66,10 @@ fun SettingsScreen(graph: AppGraph) {
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 20.dp),
             ) {
+                if (state.legacyPlaintextSettings) {
+                    Text(stringResource(R.string.settings_legacy_plaintext), color = MaterialTheme.colorScheme.error)
+                    OutlinedButton(onClick = { vm.importLegacySettings() }) { Text(stringResource(R.string.settings_import_legacy)) }
+                }
                 // ---- Server ------------------------------------------------
                 OcSectionHeader(stringResource(R.string.settings_server_header))
                 Card(shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
@@ -80,6 +87,7 @@ fun SettingsScreen(graph: AppGraph) {
                             )
                         }
                         if (state.server.mode == ServerMode.REMOTE) {
+                            Text(stringResource(R.string.settings_remote_security), style = MaterialTheme.typography.bodySmall)
                             OutlinedTextField(
                                 value = state.server.host,
                                 onValueChange = { vm.setHost(it) },
@@ -91,32 +99,50 @@ fun SettingsScreen(graph: AppGraph) {
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(
-                                value = state.server.port.toString(),
+                                value = state.serverPortText,
                                 onValueChange = { vm.setPort(it) },
                                 label = { Text(stringResource(R.string.settings_server_port)) },
                                 singleLine = true,
                                 modifier = Modifier.weight(1f),
                                 shape = MaterialTheme.shapes.small,
                             )
+                            if (state.server.mode == ServerMode.REMOTE) {
+                                OutlinedTextField(
+                                    value = state.server.username,
+                                    onValueChange = { vm.setUsername(it) },
+                                    label = { Text(stringResource(R.string.settings_server_user)) },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f),
+                                    shape = MaterialTheme.shapes.small,
+                                )
+                            }
+                        }
+                        if (state.server.mode == ServerMode.REMOTE) {
                             OutlinedTextField(
-                                value = state.server.username,
-                                onValueChange = { vm.setUsername(it) },
-                                label = { Text(stringResource(R.string.settings_server_user)) },
+                                value = state.server.password,
+                                visualTransformation = PasswordVisualTransformation(),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                                onValueChange = { vm.setPassword(it) },
+                                label = { Text(stringResource(R.string.settings_server_password)) },
                                 singleLine = true,
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.fillMaxWidth(),
                                 shape = MaterialTheme.shapes.small,
                             )
+                        } else {
+                            Text(stringResource(R.string.settings_local_auth), style = MaterialTheme.typography.bodySmall)
                         }
-                        OutlinedTextField(
-                            value = state.server.password,
-                            onValueChange = { vm.setPassword(it) },
-                            label = { Text(stringResource(R.string.settings_server_password)) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = MaterialTheme.shapes.small,
-                        )
+                        if (state.server.mode == ServerMode.REMOTE) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                androidx.compose.material3.Checkbox(checked = state.providerSyncAllowed, onCheckedChange = vm::setProviderSyncAllowed)
+                                Text(stringResource(R.string.settings_provider_consent), modifier = Modifier.weight(1f))
+                            }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = vm::applyServer) { Text(stringResource(R.string.action_apply)) }
+                            OutlinedButton(onClick = vm::cancelServerChanges) { Text(stringResource(R.string.action_cancel)) }
+                        }
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = { vm.testConnection() }) {
+                            Button(onClick = { vm.testConnection() }, enabled = !state.serverDirty) {
                                 Text(stringResource(R.string.settings_server_test))
                             }
                             OcStatusChip(
@@ -127,7 +153,7 @@ fun SettingsScreen(graph: AppGraph) {
                         if (state.server.mode == ServerMode.LOCAL) {
                             OutlinedButton(
                                 onClick = { vm.restartServer() },
-                                enabled = state.bootstrap.phase == io.github.oustery.opencodephone.core.model.BootstrapPhase.READY,
+                                enabled = !state.serverDirty && state.bootstrap.phase == io.github.oustery.opencodephone.core.model.BootstrapPhase.READY,
                             ) {
                                 Text(stringResource(R.string.settings_server_restart))
                             }
@@ -203,6 +229,8 @@ fun SettingsScreen(graph: AppGraph) {
                         )
                         OutlinedTextField(
                             value = state.git.githubToken,
+                            visualTransformation = PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                             onValueChange = { vm.setGitToken(it) },
                             label = { Text(stringResource(R.string.settings_git_token)) },
                             singleLine = true,
@@ -347,6 +375,8 @@ private fun AddProviderDialog(
                 }
                 OutlinedTextField(
                     value = apiKey,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     onValueChange = { apiKey = it },
                     label = { Text(stringResource(R.string.settings_providers_key)) },
                     singleLine = true,

@@ -1,6 +1,10 @@
 package io.github.oustery.opencodephone.core.linuxenv
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
@@ -14,6 +18,56 @@ import java.util.concurrent.atomic.AtomicInteger
 class ManagedServerTest {
     private val cfg = ServerLaunchConfig(4096, "opencode", "")
     private fun sleeper() = ProcessBuilder("sh", "-c", "exec sleep 30").redirectErrorStream(true).start()
+
+    @Test
+    fun `stop during launch rejects and reaps the late process`() = runBlocking {
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val child = CompletableDeferred<Process>()
+        val server = ManagedServer({
+            entered.countDown()
+            check(release.await(5, TimeUnit.SECONDS))
+            sleeper().also { child.complete(it) }
+        }, { })
+        val start = async { server.start(cfg) }
+        try {
+            withContext(Dispatchers.IO) { assertTrue(entered.await(5, TimeUnit.SECONDS)) }
+            server.stop()
+            release.countDown()
+            withTimeout(5000) { start.await() }
+            assertFalse(child.await().isAlive)
+            assertEquals(ServerState.Stopped, server.state.value)
+            assertFalse(server.isAlive())
+        } finally {
+            release.countDown()
+            start.cancelAndJoin()
+            server.stop()
+            if (child.isCompleted) child.await().destroyForcibly()
+        }
+    }
+
+    @Test
+    fun `stop during launch preserves stopped state when late launch fails`() = runBlocking {
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val server = ManagedServer({
+            entered.countDown()
+            check(release.await(5, TimeUnit.SECONDS))
+            error("late launch failure")
+        }, { })
+        val start = async { server.start(cfg) }
+        try {
+            withContext(Dispatchers.IO) { assertTrue(entered.await(5, TimeUnit.SECONDS)) }
+            server.stop()
+            release.countDown()
+            withTimeout(5000) { start.await() }
+            assertEquals(ServerState.Stopped, server.state.value)
+        } finally {
+            release.countDown()
+            start.cancelAndJoin()
+            server.stop()
+        }
+    }
 
     @Test
     fun `same configuration reuses process but credentials force restart`() = runBlocking {

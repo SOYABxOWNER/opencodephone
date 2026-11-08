@@ -3,299 +3,172 @@ package io.github.oustery.opencodephone.ui.files
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.oustery.opencodephone.AppGraph
-import io.github.oustery.opencodephone.core.linuxenv.PRootCommand
-import io.github.oustery.opencodephone.ui.common.shellEscape
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
+import io.github.oustery.opencodephone.core.linuxenv.*
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.File
+import java.util.concurrent.atomic.AtomicLong
 
-data class FileEntry(
-    val file: File,
-    val name: String,
-    val isDir: Boolean,
-    val depth: Int,
+ data class FileEntry(val file: File, val name: String, val isDir: Boolean, val depth: Int)
+ data class FilesUiState(
+    val entries: List<FileEntry> = emptyList(), val expanded: Set<String> = emptySet(),
+    val workspaceEmpty: Boolean = false, val gitBranch: String? = null, val gitChanges: Int = 0,
+    val gitProject: String? = null, val editing: EditingFile? = null,
+    val showCloneDialog: Boolean = false, val showNewFileDialog: Boolean = false,
+    val busy: String? = null, val message: String? = null,
 )
+ data class EditingFile(val snapshot: WorkspaceFiles.Snapshot, val content: String) {
+    val file: File get() = snapshot.file
+}
 
-data class FilesUiState(
-    val entries: List<FileEntry> = emptyList(),
-    val expanded: Set<String> = emptySet(),
-    val workspaceEmpty: Boolean = false,
-    val gitBranch: String? = null,
-    val gitChanges: Int = 0,
-    val editing: EditingFile? = null,
-    val showCloneDialog: Boolean = false,
-    val showNewFileDialog: Boolean = false,
-    val busy: String? = null,
-    val message: String? = null,
-)
-
-data class EditingFile(
-    val file: File,
-    val content: String,
-)
-
-/**
- * Works directly on the shared workspace directory: the app and the Debian
- * environment see the same files, so file browsing needs no server round-trip
- * while git operations run inside the environment.
- */
 class FilesViewModel(private val graph: AppGraph) : ViewModel() {
-
     private val _state = MutableStateFlow(FilesUiState())
     val state: StateFlow<FilesUiState> = _state
+    private val workspace = graph.layout.workspaceDir
+    private val files = WorkspaceFiles(workspace)
+    private val gitLock = Mutex()
+    private val scanEpoch = AtomicLong()
+    private val editEpoch = AtomicLong()
+    private var refreshJob: Job? = null
+    @Volatile private var project: File? = null
 
-    private val workspace: File = graph.layout.workspaceDir
+    init { refresh() }
 
-    init {
-        refresh()
-        refreshGit()
-    }
-
-    /** Git runs inside the Debian env; without it the commands only spew proot warnings. */
-    private fun envReady(): Boolean {
-        val ready = graph.layout.isInstalled()
-        if (!ready) {
-            _state.update {
-                it.copy(
-                    busy = null,
-                    message = graph.appContext.getString(io.github.oustery.opencodephone.R.string.files_env_not_ready),
-                )
-            }
+    private fun task(label: String? = null, block: suspend () -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (label != null) _state.update { it.copy(busy = label) }
+            try { block() }
+            catch (e: CancellationException) { throw e }
+            catch (e: Exception) { _state.update { it.copy(message = e.message ?: "Operation failed") } }
+            finally { if (label != null) _state.update { it.copy(busy = null) } }
         }
-        return ready
     }
 
     fun refresh() {
-        val entries = mutableListOf<FileEntry>()
+        val ticket = scanEpoch.incrementAndGet()
         val expanded = _state.value.expanded
-        scan(File(workspace.absolutePath), 0, expanded, entries)
-        _state.update {
-            it.copy(entries = entries, workspaceEmpty = entries.isEmpty())
-        }
-    }
-
-    private fun scan(dir: File, depth: Int, expanded: Set<String>, out: MutableList<FileEntry>) {
-        val children = dir.listFiles()?.sortedWith(
-            compareByDescending<File> { it.isDirectory }.thenBy { it.name.lowercase() },
-        ) ?: return
-        children.forEach { child ->
-            out += FileEntry(child, child.name, child.isDirectory, depth)
-            if (child.isDirectory && child.absolutePath in expanded) {
-                scan(child, depth + 1, expanded, out)
-            }
+        refreshJob?.cancel()
+        refreshJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val entries = mutableListOf<FileEntry>()
+                fun scan(dir: File, depth: Int) {
+                    ensureActive()
+                    if (depth > 64) return
+                    val children = dir.listFiles()?.sortedWith(compareByDescending<File> { it.isDirectory }.thenBy { it.name }) ?: return
+                    for (child in children) {
+                        ensureActive()
+                        if (java.nio.file.Files.isSymbolicLink(child.toPath())) continue
+                        files.checked(child)
+                        entries += FileEntry(child, child.name, child.isDirectory, depth)
+                        if (child.isDirectory && child.absolutePath in expanded) scan(child, depth + 1)
+                    }
+                }
+                scan(workspace, 0)
+                if (scanEpoch.get() == ticket) _state.update { it.copy(entries = entries, workspaceEmpty = entries.isEmpty()) }
+                if (graph.layout.isInstalled()) gitLock.withLock {
+                    val repos = (listOf(workspace) + (workspace.listFiles()?.toList() ?: emptyList()))
+                        .filter { it.isDirectory && !java.nio.file.Files.isSymbolicLink(it.toPath()) && File(it, ".git").isDirectory }
+                    for (repo in repos) migrate(repo)
+                    if (project == null) project = repos.firstOrNull()
+                    refreshGit()
+                }
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { _state.update { it.copy(message = "Refresh failed: ${e.javaClass.simpleName}") } }
         }
     }
 
     fun toggleDir(entry: FileEntry) {
-        if (!entry.isDir) return
-        _state.update {
-            val expanded = it.expanded.toMutableSet()
-            if (entry.file.absolutePath in expanded) expanded.remove(entry.file.absolutePath)
-            else expanded.add(entry.file.absolutePath)
-            it.copy(expanded = expanded)
+        _state.update { it.copy(expanded = if (entry.file.absolutePath in it.expanded) it.expanded - entry.file.absolutePath else it.expanded + entry.file.absolutePath) }
+        task {
+            if (File(files.checked(entry.file), ".git").exists()) gitLock.withLock {
+                project = entry.file
+                migrate(entry.file)
+                refreshGit()
+            }
         }
         refresh()
     }
 
     fun openFile(entry: FileEntry) {
-        val file = entry.file
-        if (file.isDirectory || file.length() > 2L * 1024 * 1024) return
-        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val content = runCatching { file.readText() }.getOrNull()
-            _state.update {
-                if (content != null) {
-                    it.copy(editing = EditingFile(file, content))
-                } else {
-                    it.copy(message = "Binary or unreadable file: ${file.name}")
-                }
-            }
+        val ticket = editEpoch.incrementAndGet()
+        task {
+            val snapshot = files.open(entry.file)
+            if (ticket == editEpoch.get()) _state.update { it.copy(editing = EditingFile(snapshot, snapshot.content)) }
         }
     }
-
-    fun updateEditingContent(value: String) {
-        _state.update {
-            it.copy(editing = it.editing?.copy(content = value))
-        }
-    }
-
+    fun updateEditingContent(value: String) = _state.update { it.copy(editing = it.editing?.copy(content = value)) }
     fun saveEditing() {
         val editing = _state.value.editing ?: return
-        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            runCatching { editing.file.writeText(editing.content) }
-                .onSuccess {
-                    _state.update { it.copy(editing = null, message = "Saved ${editing.file.name}") }
-                }
-                .onFailure { e ->
-                    _state.update { it.copy(message = e.message) }
-                }
-            refreshGit()
+        task {
+            files.save(editing.snapshot, editing.content)
+            _state.update { if (it.editing === editing) it.copy(editing = null, message = "Saved ${editing.file.name}") else it }
+            gitLock.withLock { refreshGit() }
         }
     }
-
-    fun closeEditor() = _state.update { it.copy(editing = null) }
-
+    fun closeEditor() { editEpoch.incrementAndGet(); _state.update { it.copy(editing = null) } }
     fun showClone(show: Boolean) = _state.update { it.copy(showCloneDialog = show) }
-
     fun showNewFile(show: Boolean) = _state.update { it.copy(showNewFileDialog = show) }
+    fun createFile(name: String) { _state.update { it.copy(showNewFileDialog = false) }; task { files.create(name); refresh() } }
+
+    private fun cwd(repo: File): String {
+        val relative = workspace.toPath().toAbsolutePath().normalize().relativize(files.checked(repo).toPath())
+        return PRootCommand.WORKSPACE_MOUNT + if (relative.toString().isEmpty()) "" else "/$relative"
+    }
+    private suspend fun exec(repo: File, args: List<String>, env: Map<String, String> = emptyMap()): ExecResult {
+        check(graph.layout.isInstalled()) { "Environment is not ready" }
+        return graph.runtime.exec(args, env = env, cwd = cwd(repo))
+    }
+    private suspend fun migrate(repo: File) = GitAuth.migrateRemotes { exec(repo, it) }
+    private suspend fun refreshGit() {
+        val repo = project ?: return
+        val result = exec(repo, listOf("git", "status", "--porcelain", "-b"))
+        check(result.exitCode == 0) { "Git status failed" }
+        val lines = result.output.lines()
+        _state.update { it.copy(gitProject = repo.name, gitBranch = lines.firstOrNull()?.removePrefix("## "), gitChanges = lines.drop(1).count { line -> line.isNotBlank() }) }
+    }
 
     fun cloneRepository(url: String) {
-        val trimmed = url.trim()
-        if (trimmed.isEmpty()) return
-        if (!envReady()) return
-        val name = trimmed.removeSuffix(".git").substringAfterLast('/').ifBlank { "repository" }
-        _state.update { it.copy(showCloneDialog = false, busy = "Cloning $name…") }
-        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val target = File(workspace, name)
-            if (target.exists()) {
-                _state.update { it.copy(busy = null, message = "Directory $name already exists") }
-                return@launch
-            }
-            val authUrl = withGithubToken(trimmed)
-            val result = graph.runtime.exec(
-                listOf(
-                    "bash", "-lc",
-                    "git clone ${shellEscape(authUrl)} ${shellEscape(name)}",
-                ),
-                cwd = PRootCommand.WORKSPACE_MOUNT,
-                timeoutMs = 10 * 60_000,
-            )
-            _state.update {
-                if (result.exitCode == 0) {
-                    it.copy(busy = null, message = "Cloned $name")
-                } else {
-                    it.copy(busy = null, message = result.output.takeLast(400))
-                }
+        _state.update { it.copy(showCloneDialog = false) }
+        task("Cloning…") {
+            gitLock.withLock {
+                val clean = GitAuth.cleanUrl(url)
+                val name = java.net.URI(clean).path.removeSuffix("/").substringAfterLast('/').removeSuffix(".git")
+                require(name.matches(Regex("[A-Za-z0-9._-]+")) && name !in listOf(".", "..", ".git")) { "Invalid repository name" }
+                val target = files.checked(File(workspace, name))
+                check(!target.exists()) { "Directory already exists" }
+                val result = exec(workspace, GitAuth.command("clone", "--", clean, name), GitAuth.environment(clean, graph.settings.gitConfig().githubToken))
+                check(result.exitCode == 0) { "Clone failed (exit ${result.exitCode})" }
+                project = target
+                refreshGit()
             }
             refresh()
-            refreshGit()
         }
     }
-
-    fun createFile(name: String) {
-        _state.update { it.copy(showNewFileDialog = false) }
-        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val file = File(workspace, name.trim())
-            if (file.exists()) {
-                _state.update { it.copy(message = "${file.name} already exists") }
-                return@launch
-            }
-            runCatching {
-                if (name.endsWith("/")) file.mkdirs() else {
-                    file.parentFile?.mkdirs()
-                    file.writeText("")
-                }
-            }.onFailure { e -> _state.update { it.copy(message = e.message) } }
-            refresh()
-        }
-    }
-
-    private fun refreshGit() {
-        if (!graph.layout.isInstalled()) return
-        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val status = graph.runtime.exec(
-                listOf("bash", "-lc", "git status --porcelain -b 2>&1 | head -50"),
-                cwd = PRootCommand.WORKSPACE_MOUNT,
-                timeoutMs = 30_000,
-            )
-            val notRepo = status.output.contains("not a git repository", ignoreCase = true)
-            _state.update { st ->
-                if (notRepo) {
-                    st.copy(gitBranch = null, gitChanges = 0)
-                } else {
-                    val lines = status.output.lines()
-                    val branch = lines.firstOrNull()?.removePrefix("## ")?.split("…")?.firstOrNull()
-                    val changes = lines.drop(1).count { it.isNotBlank() }
-                    st.copy(gitBranch = branch, gitChanges = changes)
-                }
-            }
-        }
-    }
-
     fun commit(message: String) {
-        val trimmed = message.trim()
-        if (trimmed.isEmpty()) return
-        if (!envReady()) return
-        _state.update { it.copy(busy = "Committing…") }
-        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val git = graph.settings.gitConfig()
-            val identity = buildString {
-                if (git.userName.isNotBlank()) append("-c user.name=${shellEscape(git.userName)} ")
-                if (git.userEmail.isNotBlank()) append("-c user.email=${shellEscape(git.userEmail)} ")
-            }
-            val result = graph.runtime.exec(
-                listOf(
-                    "bash", "-lc",
-                    "git add -A && git $identity commit -m ${shellEscape(trimmed)}",
-                ),
-                cwd = PRootCommand.WORKSPACE_MOUNT,
-            )
-            _state.update {
-                if (result.exitCode == 0) {
-                    it.copy(busy = null, message = "Committed")
-                } else {
-                    it.copy(busy = null, message = result.output.takeLast(400))
-                }
-            }
+        if (message.isBlank()) return
+        task("Committing…") { gitLock.withLock {
+            val repo = checkNotNull(project) { "Select a repository directory" }
+            migrate(repo)
+            check(exec(repo, listOf("git", "add", "-A")).exitCode == 0) { "Git add failed" }
+            val identity = graph.settings.gitConfig()
+            val args = listOf("-c", "user.name=${identity.userName}", "-c", "user.email=${identity.userEmail}", "commit", "-m", message)
+            check(exec(repo, GitAuth.command(*args.toTypedArray())).exitCode == 0) { "Commit failed" }
             refreshGit()
-        }
+        } }
     }
-
     fun push() {
-        if (!envReady()) return
-        _state.update { it.copy(busy = "Pushing…") }
-        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val token = graph.settings.gitConfig().githubToken
-            val result = graph.runtime.exec(
-                listOf("bash", "-lc", buildPushCommand(token)),
-                cwd = PRootCommand.WORKSPACE_MOUNT,
-                timeoutMs = 5 * 60_000,
-            )
-            _state.update {
-                if (result.exitCode == 0) {
-                    it.copy(busy = null, message = "Pushed")
-                } else {
-                    it.copy(busy = null, message = result.output.takeLast(400))
-                }
-            }
-        }
+        task("Pushing…") { gitLock.withLock {
+            val repo = checkNotNull(project) { "Select a repository directory" }
+            migrate(repo)
+            val remote = exec(repo, listOf("git", "remote", "get-url", "--push", "origin"))
+            check(remote.exitCode == 0) { "No push remote" }
+            val clean = GitAuth.cleanUrl(remote.output.trim())
+            val result = exec(repo, GitAuth.command("push", clean, "HEAD"), GitAuth.environment(clean, graph.settings.gitConfig().githubToken))
+            check(result.exitCode == 0) { "Push failed (exit ${result.exitCode})" }
+            _state.update { it.copy(message = "Pushed") }
+        } }
     }
-
-    /**
-     * Build `git push` with token auth injected for github.com remotes when a
-     * PAT is configured. The whole URL is shell-quoted when executed.
-     */
-    private suspend fun buildPushCommand(token: String): String {
-        val remoteResult = graph.runtime.exec(
-            listOf("bash", "-lc", "git remote get-url origin"),
-            cwd = PRootCommand.WORKSPACE_MOUNT,
-        )
-        val remote = remoteResult.output.trim()
-        return if (token.isNotBlank() && remote.startsWith("https://github.com/")) {
-            val authed = remote
-                .replaceFirst("https://github.com/", "https://x-access-token:$token@github.com/")
-            "git push ${shellEscape(authed)} HEAD"
-        } else {
-            "git push"
-        }
-    }
-
-    private fun withGithubToken(url: String): String {
-        val token = graph.settings.gitConfig().githubToken
-        return if (token.isNotBlank() && url.startsWith("https://github.com/")) {
-            url.replaceFirst(
-                "https://github.com/",
-                "https://x-access-token:$token@github.com/",
-            )
-        } else {
-            url
-        }
-    }
-
     fun dismissMessage() = _state.update { it.copy(message = null) }
-
-    override fun onCleared() {
-        super.onCleared()
-    }
 }
