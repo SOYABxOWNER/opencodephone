@@ -150,4 +150,9 @@
     <string name="update_download">Скачать обновление</string>
     <string name="update_install">Установить обновление</string>
     <string name="chat_model_free">Бесплатно</string>
+    <string name="state_expanded">Развёрнуто</string>
+    <string name="state_collapsed">Свёрнуто</string>
+    <string name="chat_reasoning">Рассуждение</string>
+    <string name="chat_tool_output">Вывод инструмента</string>
+    <string name="settings_server_help">Как работает управление сервером</string>
 </resources>

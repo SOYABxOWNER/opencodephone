@@ -253,7 +253,7 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
         val client = activeClient
         try {
             val raw: List<MessageWithParts> = client.listMessages(sessionId)
-            val ui = raw.map { msg ->
+            val ui = io.github.oustery.opencodephone.core.model.MessageTimeline.newestFirst(raw).map { msg ->
                 UiMessage(
                     id = msg.info.id,
                     role = msg.info.role,

@@ -12,6 +12,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.oustery.opencodephone.BuildConfig
 import io.github.oustery.opencodephone.R
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun AppUpdateCard() {
     val vm: AppUpdateViewModel = viewModel()
@@ -32,7 +33,8 @@ internal fun AppUpdateCard() {
             }, state.version, state.progress))
             when (state.phase) {
                 UpdatePhase.CHECKING, UpdatePhase.DOWNLOADING -> {
-                    if (state.phase == UpdatePhase.DOWNLOADING) LinearProgressIndicator(progress = { state.progress / 100f })
+                    if (state.phase == UpdatePhase.DOWNLOADING) LinearWavyProgressIndicator(progress = { state.progress / 100f }, modifier = Modifier.fillMaxWidth())
+                    else LinearWavyProgressIndicator(modifier = Modifier.fillMaxWidth())
                     TextButton(onClick = vm::cancel) { Text(stringResource(R.string.action_cancel)) }
                 }
                 UpdatePhase.AVAILABLE -> Button(onClick = vm::download) { Text(stringResource(R.string.update_download)) }

@@ -1,5 +1,23 @@
 package io.github.oustery.opencodephone.core.designsystem
 
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.material3.AssistChip
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -66,7 +84,7 @@ fun OcSectionHeader(
         text = title,
         style = MaterialTheme.typography.labelLarge,
         color = MaterialTheme.colorScheme.primary,
-        modifier = modifier.padding(top = 16.dp, bottom = 8.dp),
+        modifier = modifier.padding(top = 16.dp, bottom = 8.dp).semantics { heading() },
     )
 }
 
@@ -81,7 +99,7 @@ fun OcEmptyState(
     onAction: (() -> Unit)? = null,
 ) {
     Column(
-        modifier = modifier.padding(32.dp),
+        modifier = modifier.verticalScroll(rememberScrollState()).padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -118,21 +136,53 @@ fun OcInfoRow(
     modifier: Modifier = Modifier,
     valueColor: Color = MaterialTheme.colorScheme.onSurface,
 ) {
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            value,
-            style = MaterialTheme.typography.bodyMedium,
-            color = valueColor,
-            textAlign = TextAlign.End,
-        )
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        val stacked = maxWidth < 360.dp || LocalDensity.current.fontScale >= 1.3f
+        if (stacked) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                SelectionContainer { Text(value, style = MaterialTheme.typography.bodyMedium, color = valueColor) }
+            }
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
+                Text(label, modifier = Modifier.weight(0.4f), style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                SelectionContainer(modifier = Modifier.weight(0.6f)) {
+                    Text(value, style = MaterialTheme.typography.bodyMedium, color = valueColor, textAlign = TextAlign.End)
+                }
+            }
+        }
+    }
+}
+
+/** An action, unlike the passive status label above. */
+@Composable
+fun OcActionChip(text: String, actionLabel: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    AssistChip(
+        onClick = onClick,
+        modifier = modifier.heightIn(min = 48.dp).semantics { contentDescription = actionLabel },
+        label = { Text(text, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        leadingIcon = { Text("▾") },
+    )
+}
+
+/** State survives rotation; streaming text never resets the user's expansion choice. */
+@Composable
+fun OcDisclosure(
+    title: String,
+    expandedDescription: String,
+    collapsedDescription: String,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    Column(modifier = modifier) {
+        TextButton(onClick = { expanded = !expanded }, modifier = Modifier.heightIn(min = 48.dp).semantics {
+            stateDescription = if (expanded) expandedDescription else collapsedDescription
+        }) {
+            Text(if (expanded) "−" else "+", modifier = Modifier.padding(end = 8.dp))
+            Text(title, style = MaterialTheme.typography.labelLarge)
+        }
+        AnimatedVisibility(visible = expanded) { content() }
     }
 }

@@ -2,6 +2,17 @@ package io.github.oustery.opencodephone.ui.files
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import io.github.oustery.opencodephone.core.designsystem.CodeTypography
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -115,7 +126,7 @@ fun FilesScreen(graph: AppGraph) {
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(state.entries, key = { it.file.absolutePath }) { entry ->
-                        FileRow(entry, onClick = {
+                        FileRow(entry, expanded = entry.file.absolutePath in state.expanded, onClick = {
                             if (entry.isDir) vm.toggleDir(entry) else vm.openFile(entry)
                         })
                     }
@@ -187,12 +198,14 @@ private fun GitBar(branch: String, changes: Int, onCommit: (String) -> Unit, onP
 }
 
 @Composable
-private fun FileRow(entry: FileEntry, onClick: () -> Unit) {
+private fun FileRow(entry: FileEntry, expanded: Boolean, onClick: () -> Unit) {
+    val description = stringResource(if (expanded) R.string.state_expanded else R.string.state_collapsed)
     Row(
         modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(start = (16 + entry.depth * 20).dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
+            .fillMaxWidth().heightIn(min = 48.dp)
+            .semantics { if (entry.isDir) stateDescription = description }
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(start = (16 + entry.depth.coerceAtMost(6) * 20).dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -220,6 +233,7 @@ private fun FileRow(entry: FileEntry, onClick: () -> Unit) {
         }
         Text(
             text = entry.name,
+            modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.bodyLarge,
             color = if (entry.isDir) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -286,26 +300,26 @@ private fun EditorDialog(
     onSave: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(fileName) },
-        text = {
-            OutlinedTextField(
-                value = content,
-                onValueChange = onContentChange,
-                modifier = Modifier.fillMaxWidth().height(420.dp),
-                textStyle = TextStyle(
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 12.sp,
-                    lineHeight = 17.sp,
-                ),
-            )
-        },
-        confirmButton = {
-            Button(onClick = onSave) { Text(stringResource(R.string.action_save)) }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
-        },
-    )
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().imePadding(), contentAlignment = Alignment.Center) {
+            val compact = maxHeight < 520.dp || maxWidth < 600.dp
+            Surface(
+                modifier = if (compact) Modifier.fillMaxSize() else Modifier.widthIn(max = 900.dp).fillMaxWidth().heightIn(max = 720.dp),
+                shape = if (compact) androidx.compose.ui.graphics.RectangleShape else MaterialTheme.shapes.large,
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(fileName, style = MaterialTheme.typography.titleLarge)
+                    OutlinedTextField(
+                        value = content, onValueChange = onContentChange,
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        textStyle = CodeTypography.editor,
+                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+                        Button(onClick = onSave) { Text(stringResource(R.string.action_save)) }
+                    }
+                }
+            }
+        }
+    }
 }

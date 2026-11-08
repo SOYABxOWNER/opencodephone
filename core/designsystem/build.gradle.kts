@@ -17,6 +17,8 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    testOptions { unitTests.isIncludeAndroidResources = true }
+
     buildFeatures {
         compose = true
     }
@@ -37,6 +39,11 @@ dependencies {
 
     implementation(libs.androidx.activity.compose)
 
+    testImplementation(libs.junit)
+    testImplementation("org.robolectric:robolectric:4.17")
+    testImplementation(platform(libs.compose.bom))
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
     debugImplementation(libs.compose.ui.tooling)
     implementation(libs.compose.ui.tooling.preview)
 }

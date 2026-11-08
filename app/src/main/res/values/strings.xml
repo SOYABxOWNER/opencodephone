@@ -150,4 +150,9 @@
     <string name="update_download">Download update</string>
     <string name="update_install">Install update</string>
     <string name="chat_model_free">Free</string>
+    <string name="state_expanded">Expanded</string>
+    <string name="state_collapsed">Collapsed</string>
+    <string name="chat_reasoning">Reasoning</string>
+    <string name="chat_tool_output">Tool output</string>
+    <string name="settings_server_help">How server controls work</string>
 </resources>

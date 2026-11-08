@@ -3,6 +3,16 @@ package io.github.oustery.opencodephone.ui.chat
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
+import io.github.oustery.opencodephone.core.designsystem.OcActionChip
+import io.github.oustery.opencodephone.core.designsystem.OcDisclosure
+import io.github.oustery.opencodephone.core.designsystem.AppMessageShapes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -58,7 +68,7 @@ import java.net.URLDecoder
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-fun ChatScreen(graph: AppGraph) {
+fun ChatScreen(graph: AppGraph, onOpenSettings: () -> Unit) {
     val vm: ChatViewModel = viewModel(factory = VmFactory.of { ChatViewModel(graph) })
     val state by vm.state.collectAsStateWithLifecycle()
 
@@ -67,15 +77,16 @@ fun ChatScreen(graph: AppGraph) {
             title = stringResource(R.string.tab_chat),
             actions = {
                 val selection = state.modelSelection
-                OcStatusChip(
+                OcActionChip(
                     text = selection?.modelId?.takeIf { it.isNotBlank() }
                         ?: stringResource(R.string.chat_pick_model),
-                    tone = if (selection != null) OcChipTone.PRIMARY else OcChipTone.NEUTRAL,
-                    modifier = Modifier.clickable { vm.showModels(true) },
+                    actionLabel = stringResource(R.string.chat_pick_model),
+                    onClick = { vm.showModels(true) },
+                    modifier = Modifier.weight(1f),
                 )
                 IconButton(onClick = { vm.showSessions(true) }) {
                     Icon(
-                        painterResource(R.drawable.ic_tab_files),
+                        painterResource(R.drawable.ic_sessions),
                         contentDescription = stringResource(R.string.chat_sessions),
                     )
                 }
@@ -98,11 +109,14 @@ fun ChatScreen(graph: AppGraph) {
                 description = stringResource(R.string.chat_offline_body),
                 modifier = Modifier.fillMaxSize(),
                 actionText = stringResource(R.string.chat_offline_settings),
+                onAction = onOpenSettings,
             )
             ChatConnection.ERROR -> OcEmptyState(
                 title = stringResource(R.string.chat_error_title),
                 description = state.error ?: "",
                 modifier = Modifier.fillMaxSize(),
+                actionText = stringResource(R.string.chat_offline_settings),
+                onAction = onOpenSettings,
             )
         }
 
@@ -121,6 +135,21 @@ fun ChatScreen(graph: AppGraph) {
 
 @Composable
 private fun ChatConnectedBody(vm: ChatViewModel, state: ChatUiState) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        if (maxWidth >= 840.dp) {
+            Row(Modifier.fillMaxSize()) {
+                Surface(modifier = Modifier.width(260.dp).fillMaxHeight(), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                    SessionsSheet(vm, state)
+                }
+                Column(Modifier.weight(1f)) { ChatTimeline(vm, state) }
+            }
+        } else ChatTimeline(vm, state)
+    }
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun ChatTimeline(vm: ChatViewModel, state: ChatUiState) {
     ScreenBody {
         val listState = rememberLazyListState()
         val clipboard = LocalClipboardManager.current
@@ -132,14 +161,6 @@ private fun ChatConnectedBody(vm: ChatViewModel, state: ChatUiState) {
             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                    OcStatusChip(
-                        text = stringResource(R.string.chat_connected, state.version),
-                        tone = OcChipTone.PRIMARY,
-                    )
-                }
-            }
             if (state.messages.isEmpty() && !state.busy) {
                 item {
                     OcEmptyState(
@@ -152,18 +173,17 @@ private fun ChatConnectedBody(vm: ChatViewModel, state: ChatUiState) {
             items(state.messages, key = { it.id }) { message ->
                 MessageBubble(message, onCopy = { text -> clipboard.setText(AnnotatedString(text)) })
             }
-            if (state.busy) {
-                item {
-                    LinearWavyProgressIndicator(modifier = Modifier.fillMaxWidth())
-                }
-            }
         }
 
-        LaunchedEffect(state.messages.size) {
-            if (state.messages.isNotEmpty()) {
-                listState.animateScrollToItem(0)
-            }
+        LaunchedEffect(state.activeSessionId) { listState.scrollToItem(0) }
+        LaunchedEffect(state.messages.firstOrNull()?.id) {
+            // Do not drag readers away from older messages or animate every streamed token.
+            if (listState.firstVisibleItemIndex <= 1 && !listState.isScrollInProgress) listState.scrollToItem(0)
         }
+        if (state.busy) LinearWavyProgressIndicator(modifier = Modifier.fillMaxWidth())
+        Text(stringResource(R.string.chat_connected, state.version),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
         AnimatedVisibility(visible = state.permission != null) {
             state.permission?.let { request ->
@@ -227,7 +247,7 @@ private fun ChatInput(vm: ChatViewModel, state: ChatUiState) {
             onValueChange = { vm.updateDraft(it) },
             modifier = Modifier.weight(1f),
             placeholder = { Text(stringResource(R.string.chat_input_hint)) },
-            shape = RoundedCornerShape(24.dp),
+            shape = AppMessageShapes.composer,
             maxLines = 4,
         )
         FilledIconButton(
@@ -265,12 +285,7 @@ private fun MessageBubble(message: UiMessage, onCopy: (String) -> Unit) {
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
     ) {
         Surface(
-            shape = RoundedCornerShape(
-                topStart = 20.dp,
-                topEnd = 20.dp,
-                bottomStart = if (isUser) 20.dp else 4.dp,
-                bottomEnd = if (isUser) 4.dp else 20.dp,
-            ),
+            shape = if (isUser) AppMessageShapes.outgoing else AppMessageShapes.incoming,
             color = if (isUser) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
             contentColor = if (isUser) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.widthIn(max = 320.dp),
@@ -291,11 +306,14 @@ private fun PartView(part: UiPart, onCopy: (String) -> Unit) {
                 Text(stringResource(R.string.action_copy), style = MaterialTheme.typography.labelSmall)
             }
         }
-        is UiPart.Reasoning -> Text(
-            text = part.text,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        is UiPart.Reasoning -> OcDisclosure(
+            title = stringResource(R.string.chat_reasoning),
+            expandedDescription = stringResource(R.string.state_expanded),
+            collapsedDescription = stringResource(R.string.state_collapsed),
+        ) {
+            Text(part.text, style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         is UiPart.Tool -> ToolCard(part)
         UiPart.Unknown -> Unit
         is UiPart.Step -> Unit
@@ -305,11 +323,10 @@ private fun PartView(part: UiPart, onCopy: (String) -> Unit) {
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun ToolCard(part: UiPart.Tool) {
-    val expanded = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     Surface(
         shape = MaterialTheme.shapes.small,
         color = MaterialTheme.colorScheme.surfaceContainer,
-        modifier = Modifier.fillMaxWidth().clickable { expanded.value = !expanded.value },
+        modifier = Modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -339,12 +356,15 @@ private fun ToolCard(part: UiPart.Tool) {
                 )
             }
             val output = part.output
-            if (expanded.value && !output.isNullOrBlank()) {
-                Text(
-                    text = output.take(4000),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            if (!output.isNullOrBlank()) {
+                OcDisclosure(
+                    title = stringResource(R.string.chat_tool_output),
+                    expandedDescription = stringResource(R.string.state_expanded),
+                    collapsedDescription = stringResource(R.string.state_collapsed),
+                ) {
+                    Text(output.take(4000), style = io.github.oustery.opencodephone.core.designsystem.CodeTypography.output,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
     }
@@ -363,7 +383,7 @@ private fun SelectionText(text: String) {
 
 @Composable
 private fun SessionsSheet(vm: ChatViewModel, state: ChatUiState) {
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp)) {
+    Column(modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp).padding(horizontal = 20.dp, vertical = 12.dp)) {
         Text(stringResource(R.string.chat_sessions), style = MaterialTheme.typography.titleLarge)
         Spacer(Modifier.size(8.dp))
         if (state.sessions.isEmpty()) {
@@ -373,7 +393,8 @@ private fun SessionsSheet(vm: ChatViewModel, state: ChatUiState) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        state.sessions.forEach { session ->
+        LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
+          items(state.sessions, key = { it.id }) { session ->
             Surface(
                 shape = MaterialTheme.shapes.small,
                 color = if (session.id == state.activeSessionId) {
@@ -381,7 +402,7 @@ private fun SessionsSheet(vm: ChatViewModel, state: ChatUiState) {
                 } else {
                     MaterialTheme.colorScheme.surfaceContainerLow
                 },
-                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable {
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(vertical = 4.dp).semantics { selected = session.id == state.activeSessionId }.clickable(role = Role.Button) {
                     vm.selectSession(session.id)
                 },
             ) {
@@ -392,8 +413,9 @@ private fun SessionsSheet(vm: ChatViewModel, state: ChatUiState) {
                 )
             }
         }
+        }
         Spacer(Modifier.size(8.dp))
-        FilledIconButton(onClick = { vm.newSession() }, modifier = Modifier.fillMaxWidth()) {
+        androidx.compose.material3.Button(onClick = { vm.newSession() }, modifier = Modifier.fillMaxWidth()) {
             Text(stringResource(R.string.chat_new_session))
         }
         Spacer(Modifier.size(24.dp))
@@ -453,7 +475,8 @@ private fun ModelRow(model: ModelEntry, selected: Boolean, onClick: () -> Unit) 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .heightIn(min = 48.dp)
+            .clickable(role = Role.Button, onClick = onClick)
             .padding(vertical = 8.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
