@@ -11,6 +11,7 @@ import io.github.oustery.opencodephone.core.model.PathInfo
 import io.github.oustery.opencodephone.core.model.ProviderListResponse
 import io.github.oustery.opencodephone.core.model.ServerEvent
 import io.github.oustery.opencodephone.core.model.Session
+import io.github.oustery.opencodephone.core.model.SessionFileDiff
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -78,12 +79,22 @@ internal fun promptBody(
     modelId: String?,
     agent: String?,
     attachments: List<PromptAttachment>,
+    inlineText: String? = null,
 ): JsonObject = buildJsonObject {
     put("parts", buildJsonArray {
         if (text.isNotBlank()) {
             add(buildJsonObject {
                 put("type", "text")
                 put("text", text)
+            })
+        }
+        // Remote servers cannot resolve app-side `file://` paths, so text
+        // attachments can be delivered as an extra text part instead
+        // (functional audit F-002).
+        if (!inlineText.isNullOrBlank()) {
+            add(buildJsonObject {
+                put("type", "text")
+                put("text", inlineText)
             })
         }
         attachments.forEach { file ->
@@ -146,7 +157,18 @@ class OpenCodeClient(
         method: String,
         path: String,
         body: JsonElement? = null,
-    ): String? = withContext(Dispatchers.IO) {
+    ): String? = executeDetailed(method, path, body).first
+
+    /**
+     * Execute a request returning the body text and the value of the
+     * `X-Next-Cursor` response header used by the V1 message pagination
+     * (functional audit F-011).
+     */
+    private suspend fun executeDetailed(
+        method: String,
+        path: String,
+        body: JsonElement? = null,
+    ): Pair<String?, String?> = withContext(Dispatchers.IO) {
         val snapshot = config
         val mediaType = "application/json; charset=utf-8".toMediaType()
         val bodyStr = body?.let { json.encodeToString(JsonElement.serializer(), it) }
@@ -172,7 +194,7 @@ class OpenCodeClient(
                         "OpenCode V2 has a different API; use a 1.x server or check the host and port.",
                 )
             }
-            text.ifBlank { null }
+            text.ifBlank { null } to response.header("X-Next-Cursor")
         }
     }
 
@@ -251,8 +273,14 @@ class OpenCodeClient(
 
     // -------------------------------------------------------------- Sessions
 
-    suspend fun listSessions(): List<Session> =
-        executeParsed("GET", "/session", serializer = ListSerializer(Session.serializer()))
+    /**
+     * List sessions. The V1 endpoint has no cursor envelope; [limit] caps the
+     * page server-side (the pinned server defaults to the newest 100).
+     */
+    suspend fun listSessions(limit: Int? = null): List<Session> {
+        val query = limit?.let { "?limit=$it" }.orEmpty()
+        return executeParsed("GET", "/session$query", serializer = ListSerializer(Session.serializer()))
+    }
 
     suspend fun createSession(title: String?): Session {
         val body = buildJsonObject {
@@ -265,12 +293,46 @@ class OpenCodeClient(
         execute("DELETE", "/session/${q(sessionId)}")
     }
 
-    suspend fun listMessages(sessionId: String): List<MessageWithParts> =
-        executeParsed(
-            "GET",
-            "/session/${q(sessionId)}/message",
-            serializer = ListSerializer(MessageWithParts.serializer()),
-        )
+    /** Rename a session through the V1 update endpoint (`PATCH /session/:id`). */
+    suspend fun renameSession(sessionId: String, title: String): Session {
+        val body = buildJsonObject { put("title", title) }
+        return executeParsed("PATCH", "/session/${q(sessionId)}", body, Session.serializer())
+    }
+
+    /** One page of session messages (V1 `limit` + `before` cursor, F-011). */
+    data class MessagePage(
+        val items: List<MessageWithParts>,
+        /** Opaque cursor for the next, older page; null when history is exhausted. */
+        val nextCursor: String?,
+    )
+
+    /**
+     * List messages of a session. With [limit] set the server returns the
+     * newest [limit] messages (oldest first inside the page) plus an
+     * `X-Next-Cursor` header while older messages remain; pass that cursor
+     * back as [before] to fetch the next page. Without [limit] the whole
+     * session is returned, matching the pre-pagination behaviour.
+     */
+    suspend fun listMessages(
+        sessionId: String,
+        limit: Int? = null,
+        before: String? = null,
+    ): MessagePage {
+        require(before == null || limit != null) { "V1 pagination requires limit together with before" }
+        val params = buildList {
+            if (limit != null) add("limit=$limit")
+            if (before != null) add("before=${q(before)}")
+        }.joinToString("&")
+        val path = "/session/${q(sessionId)}/message" + if (params.isEmpty()) "" else "?$params"
+        val (bodyText, nextCursor) = executeDetailed("GET", path)
+        val text = bodyText ?: throw OpenCodeApiException(-1, "Empty response for $path")
+        val arr = json.parseToJsonElement(text) as? kotlinx.serialization.json.JsonArray
+            ?: throw OpenCodeApiException(-1, "Invalid OpenCode V1 JSON response for $path. Check the server version and address.")
+        val items = arr.mapNotNull { el ->
+            runCatching { json.decodeFromString(MessageWithParts.serializer(), el.toString()) }.getOrNull()
+        }
+        return MessagePage(items, nextCursor)
+    }
 
     /**
      * Send a user prompt asynchronously; completion arrives through the
@@ -348,10 +410,25 @@ class OpenCodeClient(
         return runCatching { json.decodeFromString(FileContent.serializer(), text) }.getOrNull()
     }
 
-    suspend fun sessionDiff(sessionId: String): List<JsonElement> {
+    /**
+     * Files changed by the agent in this session (`SnapshotFileDiff` on the
+     * pinned V1 server: `{file, patch, additions, deletions, status}`).
+     */
+    suspend fun sessionDiff(sessionId: String): List<SessionFileDiff> {
         val text = execute("GET", "/session/${q(sessionId)}/diff") ?: return emptyList()
         val arr = json.parseToJsonElement(text) as? kotlinx.serialization.json.JsonArray ?: return emptyList()
-        return arr.toList()
+        return arr.mapNotNull { el ->
+            val obj = el as? JsonObject ?: return@mapNotNull null
+            fun str(key: String): String? = (obj[key] as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it !is kotlinx.serialization.json.JsonNull }?.content
+            fun num(key: String): Long = (obj[key] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toLongOrNull() ?: 0L
+            SessionFileDiff(
+                file = str("file").orEmpty(),
+                patch = str("patch"),
+                additions = num("additions"),
+                deletions = num("deletions"),
+                status = str("status"),
+            )
+        }
     }
 
     suspend fun currentPath(): PathInfo =

@@ -25,6 +25,18 @@ acceptance scenario is reproducible.
 - Not performed: device execution, TalkBack/IME interaction checks, clean-install
   onboarding walkthrough, process-death instrumentation tests. These remain the
   audit's stated validation boundaries and are not claimed as verified.
-- Stage 2 items (F-005 diff review, F-007/F-008 file & Git operations, F-004/F-011
-  session management & pagination, F-002 remote files, F-013 export/restore) are
-  not started and are tracked in the audit plan.
+
+## Stage 2 — complete the working loop
+
+Delivered incrementally; each row documents its validation boundary.
+Client contracts were re-verified against the pinned server source
+(`sst/opencode` tag v1.19.5: `MessagesQuery` = `limit` + `before` cursor with
+`X-Next-Cursor`; session list defaults to the newest 100 with a `limit` query;
+`SnapshotFileDiff` = `{file, patch, additions, deletions, status}`;
+`PATCH /session/:id` accepts `{title}`).
+
+| ID | Delivered | Validation boundary |
+|---|---|---|
+| F-011 | Cursor pagination for chat history: the client requests the newest 60 messages (`limit`) and follows the `X-Next-Cursor` header with `before=`; a "Load earlier messages" action prepends older pages and the window survives throttled reloads. The sessions list sends an explicit `limit` (100) and the sessions sheet gains a search filter over the loaded list. Regression-tested against a mock server (limit/before query, cursor header, no-limit fallback). | JVM tests only. Server-side behaviour beyond the mocked header (cursor format drift) is covered by the lenient parser but not device-verified. The V1 sessions endpoint has no cursor envelope — beyond the newest 100 sessions older sessions remain unreachable; recorded as a platform boundary. |
+| F-004 | Session management: every session row offers rename (`PATCH /session/:id` with `{title}`) and delete (`DELETE /session/:id`) with a confirmation dialog naming the session; deleting the active session auto-selects the next newest one or empties the timeline. | Build + mock-server tests for the client calls. Device check of the confirm dialog over the sheet pending. |
+| F-005 | Diff review: a "Session changes" action in the chat header opens a sheet backed by `GET /session/:id/diff`, listing each changed file with status chip and +/- counters, and an expandable selectable monospace patch view. | Build only; the diff endpoint was not exercised against a live server in this environment. |

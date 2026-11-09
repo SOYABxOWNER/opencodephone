@@ -119,6 +119,19 @@ data class PathInfo(
     val root: String = "",
 )
 
+/**
+ * One file changed by the agent in a session (`GET /session/:id/diff`,
+ * `SnapshotFileDiff`). [patch] carries the unified diff text; the parser
+ * keeps null when the server omits it.
+ */
+data class SessionFileDiff(
+    val file: String = "",
+    val patch: String? = null,
+    val additions: Long = 0,
+    val deletions: Long = 0,
+    val status: String? = null,
+)
+
 /** Server-sent event envelope: `{"type": "...", "properties": {...}}`. */
 @Serializable
 data class ServerEvent(

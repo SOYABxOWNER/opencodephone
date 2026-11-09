@@ -39,6 +39,12 @@ import kotlinx.serialization.json.put
 
 enum class ChatConnection { DISCONNECTED, CONNECTING, CONNECTED, ERROR }
 
+/** Messages fetched per page (functional audit F-011). */
+const val CHAT_MESSAGE_PAGE = 60
+
+/** Explicit cap for the sessions list; the V1 endpoint defaults to the newest 100. */
+const val CHAT_SESSIONS_LIMIT = 100
+
 /** Maximum attachment size copied into the workspace (OpenCode's own limit). */
 const val MAX_ATTACHMENT_BYTES: Int = 20 * 1024 * 1024
 
@@ -83,6 +89,15 @@ data class ChatUiState(
     // Shared project context (functional audit F-001): workspace-relative
     // path of the repository selected in Files, shown above the composer.
     val projectContext: String? = null,
+    // Cursor pagination for long sessions (functional audit F-011):
+    // non-null cursor means older messages are still available on the server.
+    val earlierCursor: String? = null,
+    val loadingEarlier: Boolean = false,
+    // Session management (F-004) and the diff review sheet (F-005).
+    val sessionQuery: String = "",
+    val showDiff: Boolean = false,
+    val diffLoading: Boolean = false,
+    val diff: List<io.github.oustery.opencodephone.core.model.SessionFileDiff> = emptyList(),
 )
 
 class ChatViewModel(private val graph: AppGraph) : ViewModel() {
@@ -96,6 +111,9 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
     private var activeClient = graph.client
 
     private val reloadSignal = MutableSharedFlow<Unit>(extraBufferCapacity = 16)
+
+    // Loaded history window (messages); grows by one page per "load earlier".
+    private var historyWindow = CHAT_MESSAGE_PAGE
 
     // Crash-safe mirror of unsaved composer work (functional audit F-003).
     private val drafts = DraftStore(java.io.File(graph.appContext.filesDir, "drafts"))
@@ -207,7 +225,7 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
     }
 
     private suspend fun loadSessions() {
-        val sessions = activeClient.listSessions().sortedByDescending { it.time?.created ?: 0L }
+        val sessions = activeClient.listSessions(limit = CHAT_SESSIONS_LIMIT).sortedByDescending { it.time?.created ?: 0L }
         _state.update { state ->
             val active = state.activeSessionId?.takeIf { id -> sessions.any { it.id == id } }
                 ?: sessions.firstOrNull()?.id
@@ -306,7 +324,7 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
 
     private suspend fun loadSessionsQuiet() {
         try {
-            val sessions = activeClient.listSessions()
+            val sessions = activeClient.listSessions(limit = CHAT_SESSIONS_LIMIT)
                 .sortedByDescending { it.time?.created ?: 0L }
             _state.update { it.copy(sessions = sessions) }
         } catch (e: CancellationException) {
@@ -320,20 +338,67 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
         val ticket = endpointEpoch
         val client = activeClient
         try {
-            val raw: List<MessageWithParts> = client.listMessages(sessionId)
-            val ui = io.github.oustery.opencodephone.core.model.MessageTimeline.newestFirst(raw).map { msg ->
+            // The window keeps its size across throttled reloads so streamed
+            // tokens do not collapse an expanded history back to one page.
+            val page = client.listMessages(sessionId, limit = historyWindow)
+            val ui = io.github.oustery.opencodephone.core.model.MessageTimeline.newestFirst(page.items).map { msg ->
                 UiMessage(
                     id = msg.info.id,
                     role = msg.info.role,
                     parts = Parts.uiParts(msg.parts),
                 )
             }.filter { it.parts.isNotEmpty() }
-            _state.update { if (ticket == endpointEpoch && it.activeSessionId == sessionId) it.copy(messages = ui) else it }
+            _state.update {
+                if (ticket == endpointEpoch && it.activeSessionId == sessionId) {
+                    it.copy(messages = ui, earlierCursor = page.nextCursor)
+                } else {
+                    it
+                }
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             _state.update { it.copy(error = e.message) }
             if (required) throw e
+        }
+    }
+
+    /** Fetch one older page of the active session and prepend it (F-011). */
+    fun loadEarlier() {
+        val sessionId = _state.value.activeSessionId ?: return
+        val cursor = _state.value.earlierCursor ?: return
+        if (_state.value.loadingEarlier) return
+        val ticket = endpointEpoch
+        val client = activeClient
+        _state.update { it.copy(loadingEarlier = true) }
+        viewModelScope.launch {
+            try {
+                val page = client.listMessages(sessionId, limit = CHAT_MESSAGE_PAGE, before = cursor)
+                val older = io.github.oustery.opencodephone.core.model.MessageTimeline.newestFirst(page.items).map { msg ->
+                    UiMessage(
+                        id = msg.info.id,
+                        role = msg.info.role,
+                        parts = Parts.uiParts(msg.parts),
+                    )
+                }.filter { it.parts.isNotEmpty() }
+                if (ticket == endpointEpoch) historyWindow += CHAT_MESSAGE_PAGE
+                _state.update {
+                    if (ticket == endpointEpoch && it.activeSessionId == sessionId) {
+                        it.copy(
+                            messages = older + it.messages,
+                            earlierCursor = page.nextCursor,
+                            loadingEarlier = false,
+                        )
+                    } else {
+                        it.copy(loadingEarlier = false)
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (ticket != endpointEpoch) return@launch
+                _state.update { it.copy(loadingEarlier = false, error = e.message) }
+            }
         }
     }
 
@@ -493,6 +558,7 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
     fun newSession() {
         val client = activeClient
         val ticket = endpointEpoch
+        historyWindow = CHAT_MESSAGE_PAGE
         // Attribute the session to the selected project (F-001): the title
         // names the repository so the sessions list stays recognizable.
         val projectName = graph.selectedProject.value?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
@@ -514,13 +580,87 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
     }
 
     fun selectSession(sessionId: String) {
-        _state.update { it.copy(activeSessionId = sessionId, showSessions = false, messages = emptyList()) }
+        historyWindow = CHAT_MESSAGE_PAGE
+        _state.update { it.copy(activeSessionId = sessionId, showSessions = false, messages = emptyList(), earlierCursor = null, loadingEarlier = false) }
         messagesJob?.cancel()
         messagesJob = viewModelScope.launch {
             loadMessages(sessionId)
             try { reconcileStatus() }
             catch (e: CancellationException) { throw e }
             catch (e: Exception) { _state.update { it.copy(error = e.message) } }
+        }
+    }
+
+    /** Delete a session on the server and update the local list (F-004). */
+    fun deleteSession(sessionId: String) {
+        val client = activeClient
+        val ticket = endpointEpoch
+        val wasActive = _state.value.activeSessionId == sessionId
+        viewModelScope.launch {
+            try {
+                client.deleteSession(sessionId)
+                if (ticket != endpointEpoch) return@launch
+                val remaining = _state.value.sessions.filterNot { it.id == sessionId }
+                _state.update { it.copy(sessions = remaining) }
+                when {
+                    !wasActive -> Unit
+                    remaining.isNotEmpty() -> selectSession(remaining.first().id)
+                    else -> _state.update { it.copy(activeSessionId = null, messages = emptyList(), earlierCursor = null) }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (ticket != endpointEpoch) return@launch
+                _state.update { it.copy(error = e.message) }
+            }
+        }
+    }
+
+    /** Rename a session through the V1 PATCH endpoint (F-004). */
+    fun renameSession(sessionId: String, title: String) {
+        val trimmed = title.trim()
+        if (trimmed.isEmpty()) return
+        val client = activeClient
+        val ticket = endpointEpoch
+        viewModelScope.launch {
+            try {
+                client.renameSession(sessionId, trimmed)
+                if (ticket != endpointEpoch) return@launch
+                _state.update { st ->
+                    st.copy(sessions = st.sessions.map { if (it.id == sessionId) it.copy(title = trimmed) else it })
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (ticket != endpointEpoch) return@launch
+                _state.update { it.copy(error = e.message) }
+            }
+        }
+    }
+
+    fun updateSessionQuery(value: String) = _state.update { it.copy(sessionQuery = value) }
+
+    /** Open the diff review sheet for the active session (F-005). */
+    fun showDiff(show: Boolean) {
+        _state.update { it.copy(showDiff = show) }
+        if (show) loadDiff()
+    }
+
+    private fun loadDiff() {
+        val sessionId = _state.value.activeSessionId ?: return
+        val client = activeClient
+        val ticket = endpointEpoch
+        _state.update { it.copy(diffLoading = true) }
+        viewModelScope.launch {
+            try {
+                val diff = client.sessionDiff(sessionId)
+                if (ticket == endpointEpoch) _state.update { it.copy(diff = diff, diffLoading = false) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (ticket != endpointEpoch) return@launch
+                _state.update { it.copy(diffLoading = false, error = e.message) }
+            }
         }
     }
 
