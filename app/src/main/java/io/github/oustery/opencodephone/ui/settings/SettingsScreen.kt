@@ -36,6 +36,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -63,6 +65,8 @@ fun SettingsScreen(graph: AppGraph) {
     val state by vm.state.collectAsStateWithLifecycle()
     val serverEnabled by graph.localServerEnabled.collectAsStateWithLifecycle()
     val runtimeState by graph.runtime.serverState.collectAsStateWithLifecycle()
+    // Mode-switch confirmation (M3E audit E-010).
+    val haptics = LocalHapticFeedback.current
 
     Column(modifier = Modifier.fillMaxSize()) {
         ScreenHeader(title = stringResource(R.string.tab_settings))
@@ -86,14 +90,20 @@ fun SettingsScreen(graph: AppGraph) {
                         SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                             SegmentedButton(
                                 selected = state.server.mode == ServerMode.LOCAL,
-                                onClick = { vm.setMode(ServerMode.LOCAL) },
+                                onClick = {
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    vm.setMode(ServerMode.LOCAL)
+                                },
                                 shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
                             ) {
                                 Text(stringResource(R.string.settings_server_local))
                             }
                             SegmentedButton(
                                 selected = state.server.mode == ServerMode.REMOTE,
-                                onClick = { vm.setMode(ServerMode.REMOTE) },
+                                onClick = {
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    vm.setMode(ServerMode.REMOTE)
+                                },
                                 shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
                             ) {
                                 Text(stringResource(R.string.settings_server_remote))
