@@ -6,6 +6,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -346,6 +348,7 @@ fun SettingsScreen(graph: AppGraph) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun AddProviderDialog(
     known: List<String>,
@@ -363,18 +366,24 @@ private fun AddProviderDialog(
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (!custom) {
                     Column(modifier = Modifier.fillMaxWidth()) {
-                        known.take(8).forEach { id ->
-                            Text(
-                                text = id,
-                                style = MaterialTheme.typography.bodyLarge,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
+                        // Every known provider as a selectable chip — no truncation
+                        // (M3E audit E-007: take(8) made azure/amazon-bedrock/
+                        // github-copilot unreachable from the list).
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            known.forEach { id ->
+                                FilterChip(
+                                    selected = providerId == id,
+                                    onClick = {
                                         providerId = id
                                         custom = true
-                                    }
-                                    .padding(vertical = 10.dp),
-                            )
+                                    },
+                                    label = { Text(id) },
+                                )
+                            }
                         }
                         Text(
                             stringResource(R.string.settings_providers_custom),
