@@ -1,6 +1,7 @@
 package io.github.oustery.opencodephone.core.designsystem
 
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
@@ -29,7 +30,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SheetState
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.toPath
 import androidx.compose.material3.toShape
@@ -330,6 +335,35 @@ fun OcSkeletonRow(
         shape = MaterialTheme.shapes.small,
         color = MaterialTheme.colorScheme.surfaceContainerHighest,
     ) {}
+}
+
+/**
+ * App-wide expressive modal sheet (M3E audit E-018 follow-up).
+ *
+ * The audit recommendation named `FlexibleBottomSheet`; that API does not exist
+ * in material3 1.5.0-rc01, the newest published version, so the expressive
+ * treatment is centralized here on top of the available `ModalBottomSheet`:
+ * the theme-driven 48dp `extraLarge` sheet radius from the shape family, the
+ * shared drag handle and one app-wide sheet state that opens fully expanded,
+ * because every current sheet is a full-content picker. Screens keep only
+ * `onDismissRequest` and content, so a future expressive sheet API upgrade
+ * touches a single place.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun OcExpressiveSheet(
+    onDismissRequest: () -> Unit,
+    modifier: Modifier = Modifier,
+    sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismissRequest,
+        modifier = modifier,
+        sheetState = sheetState,
+        shape = MaterialTheme.shapes.extraLarge,
+        content = content,
+    )
 }
 
 /** A short stack of skeleton rows; the last row is shorter to hint text flow. */

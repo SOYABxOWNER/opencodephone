@@ -43,7 +43,6 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -69,6 +68,7 @@ import io.github.oustery.opencodephone.ScreenBody
 import io.github.oustery.opencodephone.ScreenHeader
 import io.github.oustery.opencodephone.core.designsystem.OcChipTone
 import io.github.oustery.opencodephone.core.designsystem.OcEmptyState
+import io.github.oustery.opencodephone.core.designsystem.OcExpressiveSheet
 import io.github.oustery.opencodephone.core.designsystem.OcShapeEmblem
 import io.github.oustery.opencodephone.core.designsystem.OcSkeletonRows
 import io.github.oustery.opencodephone.core.designsystem.OcStatusChip
@@ -134,12 +134,12 @@ fun ChatScreen(graph: AppGraph, onOpenSettings: () -> Unit) {
         }
 
         if (state.showSessions) {
-            ModalBottomSheet(onDismissRequest = { vm.showSessions(false) }) {
+            OcExpressiveSheet(onDismissRequest = { vm.showSessions(false) }) {
                 SessionsSheet(vm, state)
             }
         }
         if (state.showModels) {
-            ModalBottomSheet(onDismissRequest = { vm.showModels(false) }) {
+            OcExpressiveSheet(onDismissRequest = { vm.showModels(false) }) {
                 ModelsSheet(vm, state)
             }
         }

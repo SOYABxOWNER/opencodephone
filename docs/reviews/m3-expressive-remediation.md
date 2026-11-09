@@ -52,3 +52,25 @@ No claim of Android/ARM device execution, exact screenshot parity, TalkBack,
 IME, fold posture handling or signed-release installation is made. No version
 bump or release publication is included. The implementation addresses the audit
 findings; optional decorative extensions remain optional, not hidden blockers.
+
+## Addendum — 19-point M3E audit stages (PRs #9–#14)
+
+A second, deeper audit round used a separate numbering (E-001…E-019) and grouped
+the work into four delivery stages. They are recorded here so the two E-numbering
+schemes in these docs are not confused.
+
+| Stage | PR | Delivered |
+|---|---|---|
+| 1 | #9 | Derived surface tokens (surfaceDim/Bright/Tint, inverse*), wavy startup loader, full 11-provider chip list. |
+| 2 | #10, #11 | SegmentedButton mode selection and expressive selection components. |
+| 3 | #12 | Expressive motion: send/stop state animation, disclosure animation, haptics, LoadingIndicator, navigation transitions. |
+| 4 | #13 | MaterialShapes emblem (Morph), Material You dynamic color toggle persisted in SettingsStore (API 31+), OcSkeletonRow(s) loading placeholders, expressive section headers. |
+| 4 addendum | #14 | OcExpressiveSheet centralizes the chat sessions/models modal sheets: theme-driven extraLarge sheet radius, shared sheet state, full expansion. |
+
+**E-018 API availability note.** The recommendation named `FlexibleBottomSheet`
+(`ExperimentalMaterial3ExpressiveApi`). Verified against the published
+`androidx.compose.material3:material3-android:1.5.0-rc01` artifact: no such
+class exists there, and 1.5.0-rc01 is the newest material3 version published on
+Google Maven, so the literal API cannot be adopted. The centralized expressive
+sheet above is the available equivalent, structured so a future expressive
+sheet API upgrade touches one file (`Components.kt`) instead of every screen.
