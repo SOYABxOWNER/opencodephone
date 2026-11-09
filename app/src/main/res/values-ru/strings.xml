@@ -180,6 +180,19 @@
     <string name="editor_discard_title">Закрыть без сохранения?</string>
     <string name="editor_discard_body">В файле %1$s есть несохранённые правки. Закрытие редактора сейчас потеряет их.</string>
     <string name="editor_discard_confirm">Не сохранять</string>
+    <string name="chat_sessions_search">Поиск сессий…</string>
+    <string name="chat_sessions_no_match">Подходящих сессий нет.</string>
+    <string name="chat_sessions_limit">Показаны последние %1$d сессий</string>
+    <string name="chat_session_rename">Переименовать сессию</string>
+    <string name="chat_session_rename_hint">Название сессии</string>
+    <string name="chat_session_delete_title">Удалить сессию?</string>
+    <string name="chat_session_delete_body">Удалить «%1$s» навсегда? Все сообщения в ней будут стёрты с сервера.</string>
+    <string name="chat_load_earlier">Загрузить более старые сообщения</string>
+    <string name="chat_loading_earlier">Загрузка…</string>
+    <string name="chat_diff_title">Изменения сессии</string>
+    <string name="chat_diff_hint">Файлы, которые агент менял в этой сессии.</string>
+    <string name="chat_diff_empty">В этой сессии пока нет изменений файлов.</string>
+    <string name="chat_diff_patch">Патч</string>
     <string name="chat_project_chip">Проект: %1$s</string>
     <string name="terminal_project">проект</string>
 </resources>
