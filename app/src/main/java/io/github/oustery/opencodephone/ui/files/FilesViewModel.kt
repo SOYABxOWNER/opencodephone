@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.oustery.opencodephone.AppGraph
 import io.github.oustery.opencodephone.core.linuxenv.*
+import io.github.oustery.opencodephone.core.settings.DraftStore
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
@@ -28,13 +29,67 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
     val state: StateFlow<FilesUiState> = _state
     private val workspace = graph.layout.workspaceDir
     private val files = WorkspaceFiles(workspace)
+    private val drafts = DraftStore(java.io.File(graph.appContext.filesDir, "drafts"))
     private val gitLock = Mutex()
     private val scanEpoch = AtomicLong()
     private val editEpoch = AtomicLong()
     private var refreshJob: Job? = null
+    private var editorDraftJob: Job? = null
+    /** Path currently mirrored in the editor draft; guards clear-on-close. */
+    @Volatile private var editorDraftPath: String? = null
     @Volatile private var project: File? = null
 
-    init { refresh() }
+    init {
+        refresh()
+        restoreEditorDraft()
+    }
+
+    /**
+     * Restore the unsaved editor buffer after process death (F-003). The
+     * snapshot is reopened fresh so the save-time external-change check
+     * still protects against agent edits made while the app was dead.
+     */
+    private fun restoreEditorDraft() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val saved = drafts.readEditor() ?: return@launch
+            val file = java.io.File(saved.path)
+            if (!file.isFile) {
+                drafts.clearEditor()
+                return@launch
+            }
+            try {
+                val snapshot = files.open(file)
+                if (editEpoch.get() == 0L) {
+                    editorDraftPath = saved.path
+                    _state.update { it.copy(editing = EditingFile(snapshot, saved.content)) }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                drafts.clearEditor()
+            }
+        }
+    }
+
+    /** Mirror the editor buffer into the draft store; cleared on save/close. */
+    private fun scheduleEditorDraft() {
+        val editing = _state.value.editing ?: return
+        editorDraftPath = editing.file.absolutePath
+        editorDraftJob?.cancel()
+        editorDraftJob = viewModelScope.launch(Dispatchers.IO) {
+            delay(400)
+            drafts.writeEditor(DraftStore.EditorDraft(editing.file.absolutePath, editing.content))
+        }
+    }
+
+    /** Publish the selected repository as the shared app context (F-001). */
+    private fun publishProject(repo: File?) {
+        val relative = repo?.let {
+            workspace.toPath().toAbsolutePath().normalize()
+                .relativize(it.toPath().toAbsolutePath().normalize()).toString().ifEmpty { null }
+        }
+        graph.selectProject(relative)
+    }
 
     private fun task(label: String? = null, block: suspend () -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
@@ -71,7 +126,10 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
                     val repos = (listOf(workspace) + (workspace.listFiles()?.toList() ?: emptyList()))
                         .filter { it.isDirectory && !java.nio.file.Files.isSymbolicLink(it.toPath()) && File(it, ".git").isDirectory }
                     for (repo in repos) migrate(repo)
-                    if (project == null) project = repos.firstOrNull()
+                    if (project == null) {
+                        project = repos.firstOrNull()
+                        publishProject(project)
+                    }
                     refreshGit()
                 }
             } catch (e: CancellationException) { throw e }
@@ -84,6 +142,7 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
         task {
             if (File(files.checked(entry.file), ".git").exists()) gitLock.withLock {
                 project = entry.file
+                publishProject(entry.file)
                 migrate(entry.file)
                 refreshGit()
             }
@@ -93,21 +152,34 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
 
     fun openFile(entry: FileEntry) {
         val ticket = editEpoch.incrementAndGet()
+        editorDraftJob?.cancel()
         task {
             val snapshot = files.open(entry.file)
             if (ticket == editEpoch.get()) _state.update { it.copy(editing = EditingFile(snapshot, snapshot.content)) }
         }
     }
-    fun updateEditingContent(value: String) = _state.update { it.copy(editing = it.editing?.copy(content = value)) }
+    fun updateEditingContent(value: String) {
+        _state.update { it.copy(editing = it.editing?.copy(content = value)) }
+        scheduleEditorDraft()
+    }
     fun saveEditing() {
         val editing = _state.value.editing ?: return
+        editorDraftJob?.cancel()
         task {
             files.save(editing.snapshot, editing.content)
+            if (editing.file.absolutePath == editorDraftPath) drafts.clearEditor()
             _state.update { if (it.editing === editing) it.copy(editing = null, message = "Saved ${editing.file.name}") else it }
             gitLock.withLock { refreshGit() }
         }
     }
-    fun closeEditor() { editEpoch.incrementAndGet(); _state.update { it.copy(editing = null) } }
+    fun closeEditor() {
+        editEpoch.incrementAndGet()
+        editorDraftJob?.cancel()
+        // Only drop the mirror of the file being closed; a draft of another
+        // file (restored but not yet reopened) must survive (F-003).
+        if (_state.value.editing?.file?.absolutePath == editorDraftPath) drafts.clearEditor()
+        _state.update { it.copy(editing = null) }
+    }
     fun showClone(show: Boolean) = _state.update { it.copy(showCloneDialog = show) }
     fun showNewFile(show: Boolean) = _state.update { it.copy(showNewFileDialog = show) }
     fun createFile(name: String) { _state.update { it.copy(showNewFileDialog = false) }; task { files.create(name); refresh() } }
@@ -141,6 +213,7 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
                 val result = exec(workspace, GitAuth.command("clone", "--", clean, name), GitAuth.environment(clean, graph.settings.gitConfig().githubToken))
                 check(result.exitCode == 0) { "Clone failed (exit ${result.exitCode})" }
                 project = target
+                publishProject(target)
                 refreshGit()
             }
             refresh()

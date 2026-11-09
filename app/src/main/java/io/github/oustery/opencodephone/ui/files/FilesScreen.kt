@@ -42,6 +42,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -158,13 +159,36 @@ fun FilesScreen(graph: AppGraph) {
         NewFileDialog(onConfirm = { vm.createFile(it) }, onDismiss = { vm.showNewFile(false) })
     }
     state.editing?.let { editing ->
+        // Unsaved-changes guard (functional audit F-009): back/outside/side
+        // dismissal of a dirty editor asks instead of silently discarding.
+        var confirmDiscard by rememberSaveable { mutableStateOf(false) }
         EditorDialog(
             fileName = editing.file.name,
             content = editing.content,
             onContentChange = { vm.updateEditingContent(it) },
             onSave = { vm.saveEditing() },
-            onDismiss = { vm.closeEditor() },
+            onDismiss = {
+                if (editing.content != editing.snapshot.content) confirmDiscard = true else vm.closeEditor()
+            },
         )
+        if (confirmDiscard) {
+            AlertDialog(
+                onDismissRequest = { confirmDiscard = false },
+                title = { Text(stringResource(R.string.editor_discard_title)) },
+                text = { Text(stringResource(R.string.editor_discard_body, editing.file.name)) },
+                confirmButton = {
+                    TextButton(onClick = {
+                        confirmDiscard = false
+                        vm.closeEditor()
+                    }) { Text(stringResource(R.string.editor_discard_confirm)) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { confirmDiscard = false }) {
+                        Text(stringResource(R.string.action_cancel))
+                    }
+                },
+            )
+        }
     }
 }
 

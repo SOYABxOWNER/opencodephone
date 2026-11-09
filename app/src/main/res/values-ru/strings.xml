@@ -170,4 +170,16 @@
     <string name="chat_reasoning">Рассуждение</string>
     <string name="chat_tool_output">Вывод инструмента</string>
     <string name="settings_server_help">Как работает управление сервером</string>
+    <string name="bootstrap_choice_title">Как вы хотите использовать OpenCode?</string>
+    <string name="bootstrap_choice_local">Установить локальное окружение</string>
+    <string name="bootstrap_choice_local_hint">Скачивает Debian (~50 МБ), toolset (~65 МБ) и OpenCode CLI (~40 МБ) в приватное Linux-окружение на телефоне. Нужно для встроенного браузера файлов, терминала и локального сервера.</string>
+    <string name="bootstrap_choice_remote">Подключиться к серверу</string>
+    <string name="bootstrap_choice_remote_hint">Приложение подключается к существующему серверу opencode (Настройки → Сервер). Ничего не скачивается; чат доступен сразу после настройки подключения. Для 32-битных ARM-устройств это единственный режим.</string>
+    <string name="settings_env_install">Установить локальное окружение</string>
+    <string name="settings_env_install_hint">Вы выбрали режим только удалённого сервера. Эта кнопка установит локальное Debian-окружение, когда понадобятся файлы и терминал.</string>
+    <string name="editor_discard_title">Закрыть без сохранения?</string>
+    <string name="editor_discard_body">В файле %1$s есть несохранённые правки. Закрытие редактора сейчас потеряет их.</string>
+    <string name="editor_discard_confirm">Не сохранять</string>
+    <string name="chat_project_chip">Проект: %1$s</string>
+    <string name="terminal_project">проект</string>
 </resources>

@@ -328,6 +328,19 @@ fun SettingsScreen(graph: AppGraph) {
                         OutlinedButton(onClick = { vm.showReinstallConfirm(true) }) {
                             Text(stringResource(R.string.settings_env_reinstall))
                         }
+                        if (state.bootstrap.phase != io.github.oustery.opencodephone.core.model.BootstrapPhase.READY) {
+                            // Remote-first path (F-022): reachable only when the
+                            // user skipped the local install; routing locks main
+                            // navigation until a choice exists otherwise.
+                            Text(
+                                stringResource(R.string.settings_env_install_hint),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            OutlinedButton(onClick = { vm.installLocalEnvironment() }) {
+                                Text(stringResource(R.string.settings_env_install))
+                            }
+                        }
                     }
                 }
 

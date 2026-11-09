@@ -268,6 +268,16 @@ private fun ChatInput(vm: ChatViewModel, state: ChatUiState) {
         vm.attachUri(uri)
     }
     androidx.compose.foundation.layout.Column(modifier = Modifier.fillMaxWidth()) {
+        // Shared project context (functional audit F-001): the repository
+        // selected in Files is visible next to the composer.
+        state.projectContext?.let { project ->
+            Row(modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 4.dp)) {
+                OcStatusChip(
+                    text = stringResource(R.string.chat_project_chip, project.substringAfterLast('/')),
+                    tone = OcChipTone.NEUTRAL,
+                )
+            }
+        }
         if (state.attachments.isNotEmpty()) {
             androidx.compose.foundation.lazy.LazyRow(
                 modifier = Modifier.fillMaxWidth(),

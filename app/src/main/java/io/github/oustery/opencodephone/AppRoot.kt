@@ -45,6 +45,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import io.github.oustery.opencodephone.core.linuxenv.ServerState
 import io.github.oustery.opencodephone.core.model.BootstrapPhase
+import io.github.oustery.opencodephone.core.settings.SetupChoice
 import io.github.oustery.opencodephone.ui.bootstrap.BootstrapScreen
 import io.github.oustery.opencodephone.ui.chat.ChatScreen
 import io.github.oustery.opencodephone.ui.files.FilesScreen
@@ -65,13 +66,18 @@ fun AppRoot(graph: AppGraph) {
     val bootstrapState by graph.bootstrap.state.collectAsStateWithLifecycle()
     val serverState by graph.runtime.serverState.collectAsStateWithLifecycle()
     val serverConfiguration by graph.serverConfiguration.collectAsStateWithLifecycle()
+    val setupChoice by graph.setupChoice.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current
 
-    // Route between the bootstrap wizard and the main experience.
-    LaunchedEffect(bootstrapState.phase) {
+    // Route between the bootstrap wizard and the main experience. The
+    // remote-first path (F-022) reaches the main experience without a
+    // local environment until the user asks for one in Settings.
+    LaunchedEffect(bootstrapState.phase, setupChoice) {
+        val toMain = bootstrapState.phase == BootstrapPhase.READY ||
+            setupChoice == SetupChoice.REMOTE_ONLY
         val current = navController.currentBackStackEntry?.destination?.route
-        when (bootstrapState.phase) {
-            BootstrapPhase.READY -> {
+        when {
+            toMain -> {
                 if (current != Routes.CHAT) {
                     navController.navigate(Routes.CHAT) { popUpTo(0) }
                 }
@@ -87,13 +93,15 @@ fun AppRoot(graph: AppGraph) {
     // Autostart is owned by AppGraph (independent of navigation). Keep
     // setup and server startup foregrounded, but never stop the service in
     // the READY -> Starting transition.
-    LaunchedEffect(bootstrapState.phase, serverState, serverConfiguration.mode) {
+    LaunchedEffect(bootstrapState.phase, serverState, serverConfiguration.mode, setupChoice) {
         when {
             bootstrapState.phase == BootstrapPhase.READY &&
                 serverConfiguration.mode == io.github.oustery.opencodephone.core.settings.ServerMode.REMOTE -> EnvService.stop(context)
             serverState is ServerState.Starting || serverState is ServerState.Running -> EnvService.start(context)
             bootstrapState.phase == BootstrapPhase.FAILED || serverState is ServerState.Failed -> EnvService.stop(context)
-            bootstrapState.phase != BootstrapPhase.READY -> EnvService.start(context)
+            // Remote-first (F-022): keep the foreground service quiet while
+            // the user works against an external server without a local env.
+            bootstrapState.phase != BootstrapPhase.READY && setupChoice != SetupChoice.REMOTE_ONLY -> EnvService.start(context)
         }
     }
 

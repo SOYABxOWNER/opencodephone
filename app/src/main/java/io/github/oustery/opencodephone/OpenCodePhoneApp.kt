@@ -8,6 +8,7 @@ import io.github.oustery.opencodephone.core.linuxenv.EnvironmentRuntime
 import io.github.oustery.opencodephone.core.opencode.ConnectionConfig
 import io.github.oustery.opencodephone.core.opencode.OpenCodeClient
 import io.github.oustery.opencodephone.core.settings.ServerMode
+import io.github.oustery.opencodephone.core.settings.SetupChoice
 import io.github.oustery.opencodephone.core.settings.SettingsStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -59,6 +60,29 @@ class AppGraph(context: Application) {
     fun setDynamicColor(enabled: Boolean) {
         settings.setDynamicColor(enabled)
         _dynamicColor.value = enabled
+    }
+
+    // Remote-first onboarding choice (functional audit F-022). UNSET keeps
+    // the legacy auto-bootstrap; REMOTE_ONLY defers the Debian download.
+    private val _setupChoice = MutableStateFlow(settings.setupChoice())
+    val setupChoice: StateFlow<SetupChoice> = _setupChoice
+
+    fun chooseSetup(choice: SetupChoice) {
+        settings.setSetupChoice(choice)
+        _setupChoice.value = choice
+        if (choice == SetupChoice.LOCAL) bootstrap.start()
+    }
+
+    // Minimal shared project context (functional audit F-001): the repository
+    // picked in Files is the working context for chat session titles and the
+    // terminal working directory, persisted across restarts.
+    private val _selectedProject = MutableStateFlow(settings.selectedProject())
+    val selectedProject: StateFlow<String?> = _selectedProject
+
+    fun selectProject(relativePath: String?) {
+        if (_selectedProject.value == relativePath) return
+        settings.setSelectedProject(relativePath)
+        _selectedProject.value = relativePath
     }
 
     init {
@@ -182,7 +206,11 @@ class OpenCodePhoneApp : Application() {
                 if (resetSecureSettings) SettingsStore.resetEncryptedSettings(this@OpenCodePhoneApp)
                 val graph = AppGraph(this@OpenCodePhoneApp)
                 _startup.value = AppStartup.Ready(graph)
-                graph.bootstrap.start()
+                // Remote-first onboarding (F-022): a user who chose the
+                // server path must not be forced into the Debian download.
+                // UNSET keeps the legacy auto-bootstrap so existing installs
+                // (environment already present) are unaffected.
+                if (graph.setupChoice.value != SetupChoice.REMOTE_ONLY) graph.bootstrap.start()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

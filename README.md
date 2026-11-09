@@ -23,9 +23,9 @@ coding agent — **locally on your device**:
   approvals), **Files** (workspace browser, editor, git clone/commit/push),
   **Terminal** (persistent shell in Debian), **Settings** (providers, models,
   server, git identity);
-- works with **200+ LLM providers** (Anthropic, OpenAI, Google, OpenRouter,
-  Ollama/anything OpenAI-compatible — bring your own API keys, stored
-  encrypted on-device);
+- an **OpenCode-first model catalog**: chat lists the models reported by the
+  connected opencode server — standard and free models need no user-entered API
+  key; optional custom provider keys are stored encrypted on-device;
 - a **remote mode** that points the same UI at any machine running
   `opencode serve` (handy for 32-bit devices — see limitations).
 
@@ -229,8 +229,10 @@ Jetpack Compose (Material 3 Expressive).
   инструментов, запросы разрешений), **Файлы** (браузер рабочей папки,
   редактор, git clone/commit/push), **Терминал** (постоянный шелл в Debian),
   **Настройки** (провайдеры, модели, сервер, git).
-- **200+ провайдеров моделей** — принесите свои API-ключи (хранятся
-  шифрованно); есть **режим удалённого сервера**.
+- **Каталог моделей OpenCode-first**: чат показывает модели подключённого
+  сервера opencode — стандартные и бесплатные модели доступны без своего
+  API-ключа; собственные ключи провайдеров опциональны (шифруются на
+  устройстве); есть **режим удалённого сервера**.
 - Первый запуск скачивает Debian с проверкой SHA-256 и OpenCode CLI с
   проверкой SRI — все версии зафиксированы (см. `Pins.kt` и
   [ADR-003](docs/adr/ADR-003-opencode-install.md)).

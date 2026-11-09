@@ -15,9 +15,11 @@ import io.github.oustery.opencodephone.core.model.ProviderEntry
 import io.github.oustery.opencodephone.core.model.ServerEvent
 import io.github.oustery.opencodephone.core.model.Session
 import io.github.oustery.opencodephone.core.model.UiPart
+import io.github.oustery.opencodephone.core.settings.DraftStore
 import io.github.oustery.opencodephone.core.settings.ModelSelection
 import io.github.oustery.opencodephone.core.settings.ServerMode
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
@@ -78,6 +80,9 @@ data class ChatUiState(
     // a misleading "empty" label while the first fetch is still in flight.
     val sessionsLoading: Boolean = false,
     val providersLoading: Boolean = false,
+    // Shared project context (functional audit F-001): workspace-relative
+    // path of the repository selected in Files, shown above the composer.
+    val projectContext: String? = null,
 )
 
 class ChatViewModel(private val graph: AppGraph) : ViewModel() {
@@ -92,7 +97,34 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
 
     private val reloadSignal = MutableSharedFlow<Unit>(extraBufferCapacity = 16)
 
+    // Crash-safe mirror of unsaved composer work (functional audit F-003).
+    private val drafts = DraftStore(java.io.File(graph.appContext.filesDir, "drafts"))
+    private var chatDraftJob: Job? = null
+
     init {
+        // Restore unsaved work after process death; attachment copies live in
+        // the workspace, so entries whose file is gone are silently dropped.
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val saved = drafts.readChat() ?: return@launch
+            val restored = saved.attachments.filter { java.io.File(it.absolutePath).isFile }
+                .map { it.toPendingAttachment() }
+            if (restored.size != saved.attachments.size || restored.isNotEmpty() || saved.text.isNotEmpty()) {
+                _state.update {
+                    if (it.draft.isEmpty() && it.attachments.isEmpty()) {
+                        it.copy(draft = saved.text, attachments = restored)
+                    } else {
+                        it
+                    }
+                }
+            }
+        }
+        // Shared project context follows the Files selection (F-001).
+        viewModelScope.launch {
+            graph.selectedProject.collect { project ->
+                _state.update { it.copy(projectContext = project) }
+            }
+        }
+
         // React to server lifecycle.
         viewModelScope.launch {
             combine(graph.serverConfiguration, graph.runtime.serverState, graph.credentialsRevision) { cfg, state, _ -> cfg.mode to state }
@@ -307,7 +339,44 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
 
     // ------------------------------------------------------------ Actions
 
-    fun updateDraft(value: String) = _state.update { it.copy(draft = value) }
+    fun updateDraft(value: String) {
+        _state.update { it.copy(draft = value) }
+        scheduleChatDraft()
+    }
+
+    /** Mirror the composer into the draft store; cleared after a send. */
+    private fun scheduleChatDraft() {
+        chatDraftJob?.cancel()
+        chatDraftJob = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            delay(400)
+            persistChatDraft()
+        }
+    }
+
+    private fun persistChatDraft(scope: CoroutineScope = viewModelScope) {
+        val snapshot = _state.value
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            if (snapshot.draft.isBlank() && snapshot.attachments.isEmpty()) {
+                drafts.clearChat()
+            } else {
+                drafts.writeChat(
+                    DraftStore.ChatDraft(
+                        text = snapshot.draft,
+                        attachments = snapshot.attachments.map {
+                            DraftStore.StoredAttachment(
+                                it.id, it.displayName, it.mime, it.size, it.absolutePath, it.envPath,
+                            )
+                        },
+                    ),
+                )
+            }
+        }
+    }
+
+    private fun DraftStore.StoredAttachment.toPendingAttachment() = PendingAttachment(
+        id = id, displayName = displayName, mime = mime, size = size,
+        absolutePath = absolutePath, envPath = envPath,
+    )
 
     /**
      * Copy a picked content [Uri] into the workspace (`uploads/`), from where
@@ -323,6 +392,7 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                     copyToWorkspace(context, uri)
                 }
                 _state.update { it.copy(attachments = it.attachments + attachment) }
+                persistChatDraft()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -417,14 +487,18 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
         _state.update { it.copy(attachments = it.attachments.filterNot { a -> a.id == id }) }
         // The copy exists only for this unsent draft; a sent one stays for the agent.
         java.io.File(removed.absolutePath).delete()
+        persistChatDraft()
     }
 
     fun newSession() {
         val client = activeClient
         val ticket = endpointEpoch
+        // Attribute the session to the selected project (F-001): the title
+        // names the repository so the sessions list stays recognizable.
+        val projectName = graph.selectedProject.value?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
         viewModelScope.launch {
             try {
-                val session = client.createSession(null)
+                val session = client.createSession(projectName)
                 if (ticket != endpointEpoch) return@launch
                 _state.update {
                     it.copy(activeSessionId = session.id, messages = emptyList(), showSessions = false)
@@ -463,6 +537,7 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
         val sentDraft = text
         val sentAttachments = current.attachments
         _state.update { it.copy(draft = "", attachments = emptyList(), busy = true) }
+        persistChatDraft()
         val client = activeClient
         val ticket = endpointEpoch
         viewModelScope.launch {
@@ -495,6 +570,7 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                         attachments = it.attachments + sentAttachments,
                     )
                 }
+                persistChatDraft()
             }
         }
     }
@@ -547,6 +623,10 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
 
     override fun onCleared() {
         eventsJob?.cancel()
+        chatDraftJob?.cancel()
+        // viewModelScope is dead here; flush the final composer snapshot via
+        // the app scope so nothing typed is lost to process death (F-003).
+        persistChatDraft(graph.appScope)
         super.onCleared()
     }
 }
