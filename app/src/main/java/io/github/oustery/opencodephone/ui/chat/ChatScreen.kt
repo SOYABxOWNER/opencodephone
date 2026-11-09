@@ -30,6 +30,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledIconButton
@@ -411,8 +412,11 @@ private fun PartView(part: UiPart, onCopy: (String) -> Unit) {
             expandedDescription = stringResource(R.string.state_expanded),
             collapsedDescription = stringResource(R.string.state_collapsed),
         ) {
-            Text(part.text, style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // Copyable like the answer text (M3E audit E-011).
+            SelectionContainer {
+                Text(part.text, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
         is UiPart.FileAttachment -> AttachmentPartView(part)
         is UiPart.Tool -> ToolCard(part)
@@ -492,8 +496,11 @@ private fun ToolCard(part: UiPart.Tool) {
                     expandedDescription = stringResource(R.string.state_expanded),
                     collapsedDescription = stringResource(R.string.state_collapsed),
                 ) {
-                    Text(output.take(4000), style = io.github.oustery.opencodephone.core.designsystem.CodeTypography.output,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    // Copyable without a toolbar (M3E audit E-011).
+                    SelectionContainer {
+                        Text(output.take(4000), style = io.github.oustery.opencodephone.core.designsystem.CodeTypography.output,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
         }
@@ -590,7 +597,7 @@ private fun ModelsSheet(vm: ChatViewModel, state: ChatUiState) {
                 ) { model ->
                     ModelRow(
                         model = model,
-                        selected = state.modelSelection?.modelId == model.id &&
+                        isSelected = state.modelSelection?.modelId == model.id &&
                             state.modelSelection?.providerId == provider.id,
                         onClick = { vm.selectModel(provider.id, model.id) },
                     )
@@ -601,11 +608,13 @@ private fun ModelsSheet(vm: ChatViewModel, state: ChatUiState) {
 }
 
 @Composable
-private fun ModelRow(model: ModelEntry, selected: Boolean, onClick: () -> Unit) {
+private fun ModelRow(model: ModelEntry, isSelected: Boolean, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 48.dp)
+            // Same selected-state semantics as session rows (M3E audit E-014).
+            .semantics { selected = isSelected }
             .clickable(role = Role.Button, onClick = onClick)
             .padding(vertical = 8.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,

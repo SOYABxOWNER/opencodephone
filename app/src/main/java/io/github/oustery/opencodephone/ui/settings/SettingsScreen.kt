@@ -24,6 +24,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -78,17 +81,23 @@ fun SettingsScreen(graph: AppGraph) {
                 OcSectionHeader(stringResource(R.string.settings_server_header))
                 Card(shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            FilterChip(
+                        // Mutually exclusive modes read as one segmented control,
+                        // not two independent filter chips (M3E audit E-006).
+                        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                            SegmentedButton(
                                 selected = state.server.mode == ServerMode.LOCAL,
                                 onClick = { vm.setMode(ServerMode.LOCAL) },
-                                label = { Text(stringResource(R.string.settings_server_local)) },
-                            )
-                            FilterChip(
+                                shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                            ) {
+                                Text(stringResource(R.string.settings_server_local))
+                            }
+                            SegmentedButton(
                                 selected = state.server.mode == ServerMode.REMOTE,
                                 onClick = { vm.setMode(ServerMode.REMOTE) },
-                                label = { Text(stringResource(R.string.settings_server_remote)) },
-                            )
+                                shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                            ) {
+                                Text(stringResource(R.string.settings_server_remote))
+                            }
                         }
                         if (state.server.mode == ServerMode.REMOTE) {
                             Text(stringResource(R.string.settings_remote_security), style = MaterialTheme.typography.bodySmall)
