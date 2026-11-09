@@ -627,7 +627,7 @@ private fun ModelRow(model: ModelEntry, isSelected: Boolean, onClick: () -> Unit
         if (io.github.oustery.opencodephone.core.model.OpenCodeCatalog.isFree(model)) {
             OcStatusChip(text = stringResource(R.string.chat_model_free), tone = OcChipTone.NEUTRAL)
         }
-        if (selected) {
+        if (isSelected) {
             OcStatusChip(text = stringResource(R.string.chat_model_selected), tone = OcChipTone.PRIMARY)
         }
     }
