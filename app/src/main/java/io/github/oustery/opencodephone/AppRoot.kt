@@ -1,6 +1,10 @@
 package io.github.oustery.opencodephone
 
 import androidx.compose.foundation.background
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -115,7 +119,27 @@ fun AppRoot(graph: AppGraph) {
 
 @Composable
 private fun AppNavHost(navController: androidx.navigation.NavHostController, graph: AppGraph) {
-    NavHost(navController = navController, startDestination = Routes.BOOTSTRAP) {
+    NavHost(
+        navController = navController,
+        startDestination = Routes.BOOTSTRAP,
+        // Subtle spatial transition instead of an instant swap (M3E audit
+        // E-013): fade keeps tab switches calm, the slight scale-in gives
+        // forward/backward moves a direction.
+        enterTransition = {
+            fadeIn(animationSpec = tween(durationMillis = 220)) + scaleIn(
+                initialScale = 0.96f,
+                animationSpec = tween(durationMillis = 220),
+            )
+        },
+        exitTransition = { fadeOut(animationSpec = tween(durationMillis = 150)) },
+        popEnterTransition = {
+            fadeIn(animationSpec = tween(durationMillis = 220)) + scaleIn(
+                initialScale = 0.96f,
+                animationSpec = tween(durationMillis = 220),
+            )
+        },
+        popExitTransition = { fadeOut(animationSpec = tween(durationMillis = 150)) },
+    ) {
         composable(Routes.BOOTSTRAP) { BootstrapScreen(graph) }
         composable(Routes.CHAT) { ChatScreen(graph, onOpenSettings = { navigateTo(navController, Routes.SETTINGS) }) }
         composable(Routes.FILES) { FilesScreen(graph) }

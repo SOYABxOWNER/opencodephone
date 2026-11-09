@@ -1,6 +1,9 @@
 package io.github.oustery.opencodephone.ui.chat
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
@@ -38,6 +41,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearWavyProgressIndicator
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -49,7 +53,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
@@ -104,7 +110,8 @@ fun ChatScreen(graph: AppGraph, onOpenSettings: () -> Unit) {
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                LinearWavyProgressIndicator(modifier = Modifier.fillMaxWidth())
+                // Flagship expressive loader for a full-screen wait (E-005).
+                LoadingIndicator(modifier = Modifier.size(64.dp))
                 Spacer(Modifier.size(16.dp))
                 Text(stringResource(R.string.chat_connecting), style = MaterialTheme.typography.bodyLarge)
             }
@@ -280,29 +287,48 @@ private fun ChatInput(vm: ChatViewModel, state: ChatUiState) {
                 shape = AppMessageShapes.composer,
                 maxLines = 4,
             )
+            // Colors morph between send/stop instead of snapping; the icon
+            // crossfades inside a stable frame (M3E audit E-004).
+            val haptics = LocalHapticFeedback.current
+            val sendContainer by animateColorAsState(
+                targetValue = if (state.busy) {
+                    MaterialTheme.colorScheme.errorContainer
+                } else {
+                    MaterialTheme.colorScheme.primary
+                },
+                animationSpec = tween(durationMillis = 220),
+                label = "send-button-container",
+            )
+            val sendContent by animateColorAsState(
+                targetValue = if (state.busy) {
+                    MaterialTheme.colorScheme.onErrorContainer
+                } else {
+                    MaterialTheme.colorScheme.onPrimary
+                },
+                animationSpec = tween(durationMillis = 220),
+                label = "send-button-content",
+            )
             FilledIconButton(
-                onClick = { if (state.busy) vm.abort() else vm.send() },
+                onClick = {
+                    // Send/abort confirmation (M3E audit E-010).
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    if (state.busy) vm.abort() else vm.send()
+                },
                 colors = IconButtonDefaults.filledIconButtonColors(
-                    containerColor = if (state.busy) {
-                        MaterialTheme.colorScheme.errorContainer
-                    } else {
-                        MaterialTheme.colorScheme.primary
-                    },
-                    contentColor = if (state.busy) {
-                        MaterialTheme.colorScheme.onErrorContainer
-                    } else {
-                        MaterialTheme.colorScheme.onPrimary
-                    },
+                    containerColor = sendContainer,
+                    contentColor = sendContent,
                 ),
             ) {
-                Icon(
-                    painterResource(if (state.busy) R.drawable.ic_stop else R.drawable.ic_send),
-                    contentDescription = if (state.busy) {
-                        stringResource(R.string.chat_stop)
-                    } else {
-                        stringResource(R.string.chat_send)
-                    },
-                )
+                AnimatedContent(targetState = state.busy, label = "send-stop-icon") { busy ->
+                    Icon(
+                        painterResource(if (busy) R.drawable.ic_stop else R.drawable.ic_send),
+                        contentDescription = if (busy) {
+                            stringResource(R.string.chat_stop)
+                        } else {
+                            stringResource(R.string.chat_send)
+                        },
+                    )
+                }
             }
         }
     }
@@ -520,6 +546,9 @@ private fun SelectionText(text: String) {
 
 @Composable
 private fun SessionsSheet(vm: ChatViewModel, state: ChatUiState) {
+    // Hoisted: LocalHapticFeedback.current is a composable call and must not
+    // run inside the row click lambda (M3E audit E-010).
+    val haptics = LocalHapticFeedback.current
     Column(modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp).padding(horizontal = 20.dp, vertical = 12.dp)) {
         Text(stringResource(R.string.chat_sessions), style = MaterialTheme.typography.titleLarge)
         Spacer(Modifier.size(8.dp))
@@ -540,6 +569,8 @@ private fun SessionsSheet(vm: ChatViewModel, state: ChatUiState) {
                     MaterialTheme.colorScheme.surfaceContainerLow
                 },
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(vertical = 4.dp).semantics { selected = session.id == state.activeSessionId }.clickable(role = Role.Button) {
+                    // Selection confirmation (M3E audit E-010).
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                     vm.selectSession(session.id)
                 },
             ) {

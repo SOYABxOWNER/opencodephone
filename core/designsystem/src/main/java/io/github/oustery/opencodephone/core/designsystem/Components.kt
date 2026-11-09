@@ -13,6 +13,12 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.material3.AssistChip
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -21,9 +27,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -33,8 +41,12 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
@@ -177,13 +189,38 @@ fun OcDisclosure(
     content: @Composable () -> Unit,
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
+    // A real chevron rotates between states instead of swapping +/− glyphs
+    // (M3E audit E-003).
+    val chevronRotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        animationSpec = tween(durationMillis = 220),
+        label = "disclosure-chevron-rotation",
+    )
+    // Quiet haptic confirmation on state change (M3E audit E-010).
+    val haptics = LocalHapticFeedback.current
     Column(modifier = modifier) {
-        TextButton(onClick = { expanded = !expanded }, modifier = Modifier.heightIn(min = 48.dp).semantics {
+        TextButton(onClick = {
+            expanded = !expanded
+            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+        }, modifier = Modifier.heightIn(min = 48.dp).semantics {
             stateDescription = if (expanded) expandedDescription else collapsedDescription
         }) {
-            Text(if (expanded) "−" else "+", modifier = Modifier.padding(end = 8.dp))
+            Icon(
+                painterResource(R.drawable.ic_chevron_down),
+                contentDescription = null,
+                modifier = Modifier.size(20.dp).rotate(chevronRotation),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.width(8.dp))
             Text(title, style = MaterialTheme.typography.labelLarge)
         }
-        AnimatedVisibility(visible = expanded) { content() }
+        // Spatial expand/collapse instead of an in-place fade snap (E-012).
+        AnimatedVisibility(
+            visible = expanded,
+            enter = expandVertically(animationSpec = tween(durationMillis = 220)) +
+                fadeIn(animationSpec = tween(durationMillis = 220)),
+            exit = shrinkVertically(animationSpec = tween(durationMillis = 180)) +
+                fadeOut(animationSpec = tween(durationMillis = 120)),
+        ) { content() }
     }
 }
