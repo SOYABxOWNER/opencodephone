@@ -9,6 +9,7 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
@@ -81,6 +82,32 @@ class ComponentRenderTest {
         }
         compose.onNodeWithText("Settings").assertIsDisplayed().performClick()
         compose.runOnIdle { assertEquals(1, clicks) }
+    }
+
+    @Test fun shapeEmblemRendersExpressiveContainer() {
+        // Static emblem only: the animated morph variant uses an infinite
+        // transition and would keep the test clock from idling.
+        compose.setContent {
+            OpenCodePhoneTheme(darkTheme = true) {
+                OcShapeEmblem(
+                    painterResource(R.drawable.ic_chevron_down),
+                    modifier = Modifier.testTag("emblem"),
+                )
+            }
+        }
+        val bitmap = compose.onNodeWithTag("emblem").captureToImage().asAndroidBitmap()
+        // The emblem must paint a shape container AND a distinct icon tint;
+        // a uniform bitmap would mean nothing expressive rendered.
+        val colors = HashSet<Int>()
+        for (x in bitmap.width / 6 until bitmap.width * 5 / 6 step 4) {
+            for (y in bitmap.height / 6 until bitmap.height * 5 / 6 step 4) {
+                colors.add(bitmap.getPixel(x, y))
+                if (colors.size >= 2) break
+            }
+            if (colors.size >= 2) break
+        }
+        assertTrue("emblem rendered uniform; expected shape container + icon tint", colors.size >= 2)
+        save("shape-emblem", bitmap)
     }
 
     private fun save(name: String, bitmap: Bitmap) {

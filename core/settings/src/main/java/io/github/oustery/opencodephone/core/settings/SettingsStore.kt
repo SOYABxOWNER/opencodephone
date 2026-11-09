@@ -62,7 +62,7 @@ class SettingsStore(private val context: Context) {
         val old = context.getSharedPreferences("opencodephone_fallback", Context.MODE_PRIVATE)
         val allowed = setOf(KEY_SERVER_MODE, KEY_SERVER_HOST, KEY_SERVER_PORT, KEY_SERVER_USERNAME,
             KEY_SERVER_PASSWORD, KEY_PROVIDER_KEYS, KEY_MODEL_PROVIDER, KEY_MODEL_ID,
-            KEY_GIT_NAME, KEY_GIT_EMAIL, KEY_GIT_TOKEN, KEY_OPENCODE_PIN)
+            KEY_GIT_NAME, KEY_GIT_EMAIL, KEY_GIT_TOKEN, KEY_OPENCODE_PIN, KEY_DYNAMIC_COLOR)
         val editor = prefs.edit()
         for ((key, value) in old.all) if (key in allowed && !prefs.contains(key)) {
             when (value) {
@@ -181,6 +181,13 @@ class SettingsStore(private val context: Context) {
 
     fun setBootstrapCompleted() = edit { it.putBoolean(KEY_BOOTSTRAP_DONE, true) }
 
+    // -------------------------------------------------------- Appearance
+
+    /** Expressive toggle for Material You dynamic color on Android 12+ (M3E audit E-016). */
+    fun dynamicColor(): Boolean = prefs.getBoolean(KEY_DYNAMIC_COLOR, false)
+
+    fun setDynamicColor(enabled: Boolean) = edit { it.putBoolean(KEY_DYNAMIC_COLOR, enabled) }
+
     companion object {
         /** Destructive recovery must only be invoked after explicit UI confirmation. */
         fun resetEncryptedSettings(context: Context) {
@@ -203,5 +210,6 @@ class SettingsStore(private val context: Context) {
         private const val KEY_GIT_TOKEN = "git_github_token"
         private const val KEY_OPENCODE_PIN = "opencode_version_pin"
         private const val KEY_BOOTSTRAP_DONE = "bootstrap_completed"
+        private const val KEY_DYNAMIC_COLOR = "dynamic_color"
     }
 }

@@ -69,6 +69,8 @@ import io.github.oustery.opencodephone.ScreenBody
 import io.github.oustery.opencodephone.ScreenHeader
 import io.github.oustery.opencodephone.core.designsystem.OcChipTone
 import io.github.oustery.opencodephone.core.designsystem.OcEmptyState
+import io.github.oustery.opencodephone.core.designsystem.OcShapeEmblem
+import io.github.oustery.opencodephone.core.designsystem.OcSkeletonRows
 import io.github.oustery.opencodephone.core.designsystem.OcStatusChip
 import io.github.oustery.opencodephone.core.model.ModelEntry
 import io.github.oustery.opencodephone.core.model.ProviderEntry
@@ -174,11 +176,25 @@ private fun ChatTimeline(vm: ChatViewModel, state: ChatUiState) {
         ) {
             if (state.messages.isEmpty() && !state.busy) {
                 item {
-                    OcEmptyState(
-                        title = stringResource(R.string.chat_empty_title),
-                        description = stringResource(R.string.chat_empty_body),
+                    Column(
                         modifier = Modifier.fillMaxWidth(),
-                    )
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        // Balanced expressive zone: slow shape morph above the
+                        // empty timeline (M3E audit E-015). Errors and offline
+                        // states keep the quiet OcEmptyState without decoration.
+                        OcShapeEmblem(
+                            icon = painterResource(R.drawable.ic_tab_chat),
+                            animated = true,
+                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                        OcEmptyState(
+                            title = stringResource(R.string.chat_empty_title),
+                            description = stringResource(R.string.chat_empty_body),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
                 }
             }
             items(state.messages, key = { it.id }) { message ->
@@ -552,7 +568,17 @@ private fun SessionsSheet(vm: ChatViewModel, state: ChatUiState) {
     Column(modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp).padding(horizontal = 20.dp, vertical = 12.dp)) {
         Text(stringResource(R.string.chat_sessions), style = MaterialTheme.typography.titleLarge)
         Spacer(Modifier.size(8.dp))
-        if (state.sessions.isEmpty()) {
+        if (state.sessionsLoading) {
+            // First fetch in flight — placeholder rows instead of a false
+            // "no sessions" label (M3E audit E-017).
+            Text(
+                stringResource(R.string.chat_sessions_loading),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.size(8.dp))
+            OcSkeletonRows(rows = 3)
+        } else if (state.sessions.isEmpty()) {
             Text(
                 stringResource(R.string.chat_sessions_empty),
                 style = MaterialTheme.typography.bodyMedium,
@@ -600,7 +626,15 @@ private fun ModelsSheet(vm: ChatViewModel, state: ChatUiState) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.size(8.dp))
-        if (state.providers.isEmpty()) {
+        if (state.providersLoading) {
+            Text(
+                stringResource(R.string.chat_models_loading),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.size(8.dp))
+            OcSkeletonRows(rows = 5)
+        } else if (state.providers.isEmpty()) {
             Text(
                 stringResource(R.string.chat_models_empty),
                 style = MaterialTheme.typography.bodyMedium,

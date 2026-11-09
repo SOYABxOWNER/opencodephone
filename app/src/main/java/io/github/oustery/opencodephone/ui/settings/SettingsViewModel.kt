@@ -32,6 +32,7 @@ data class SettingsUiState(
     val legacyPlaintextSettings: Boolean = false,
     val showAddProvider: Boolean = false,
     val showReinstallConfirm: Boolean = false,
+    val dynamicColor: Boolean = false,
 )
 
 class SettingsViewModel(private val graph: AppGraph) : ViewModel() {
@@ -65,6 +66,9 @@ class SettingsViewModel(private val graph: AppGraph) : ViewModel() {
         }
         viewModelScope.launch {
             graph.runtime.serverLog.collect { log -> _state.update { it.copy(serverLog = log) } }
+        }
+        viewModelScope.launch {
+            graph.dynamicColor.collect { enabled -> _state.update { it.copy(dynamicColor = enabled) } }
         }
     }
 
@@ -199,6 +203,11 @@ class SettingsViewModel(private val graph: AppGraph) : ViewModel() {
         settings.setOpencodeVersionPin(value.trim())
         _state.update { it.copy(opencodePin = value.trim()) }
     }
+
+    // -------------------------------------------------------- Appearance
+
+    /** Persisted through the graph so the live theme flow and the store stay in sync (E-016). */
+    fun setDynamicColor(enabled: Boolean) = graph.setDynamicColor(enabled)
 
     // -------------------------------------------------------- Environment
 

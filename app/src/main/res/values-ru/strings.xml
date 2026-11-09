@@ -57,11 +57,13 @@
     <string name="chat_size_b">%1$s Б</string>
     <string name="chat_send">Отправить</string>
     <string name="chat_stop">Остановить</string>
+    <string name="chat_sessions_loading">Загрузка сессий…</string>
     <string name="chat_sessions_empty">Сессий пока нет</string>
     <string name="chat_session_untitled">Сессия без названия</string>
     <string name="chat_new_session">Новая сессия</string>
     <string name="chat_models_title">Модели</string>
     <string name="chat_models_hint">Модели OpenCode, доступные на этом сервере. Для бесплатных моделей свой API-ключ провайдера не нужен; доступность и лимиты определяет OpenCode.</string>
+    <string name="chat_models_loading">Загрузка моделей…</string>
     <string name="chat_models_empty">Нет доступных моделей OpenCode. Проверьте сеть сервера и настройки провайдера OpenCode, затем переподключитесь.</string>
     <string name="chat_provider_connected">подключён</string>
     <string name="chat_provider_no_key">нет ключа</string>
@@ -72,6 +74,7 @@
     <string name="files_clone">Клонировать</string>
     <string name="files_new_file">Новый файл</string>
     <string name="files_new_file_hint">путь/имя.txt (слэш в конце создаёт папку)</string>
+    <string name="files_loading">Загрузка рабочей папки…</string>
     <string name="files_empty_title">Пустая рабочая папка</string>
     <string name="files_empty_body">Клонируйте git-репозиторий или создайте файл, чтобы начать работу с агентом.</string>
     <string name="files_clone_title">Клонировать репозиторий</string>
@@ -89,6 +92,7 @@
     <string name="terminal_run">Выполнить</string>
 
     <!-- Settings -->
+    <string name="settings_subtitle">Сервер, провайдеры и окружение</string>
     <string name="settings_server_header">Сервер OpenCode</string>
     <string name="settings_server_local">Локальный</string>
     <string name="settings_server_remote">Удалённый</string>
@@ -116,6 +120,9 @@
     <string name="settings_env_pin_hint">Версия будет установлена при следующем сбросе окружения. Изменения применяются после переустановки.</string>
     <string name="settings_env_reinstall">Переустановить окружение</string>
     <string name="settings_env_reinstall_confirm">Это удалит окружение Debian (файлы рабочей папки сохранятся) и повторит полную установку. Продолжить?</string>
+    <string name="settings_appearance_header">Оформление</string>
+    <string name="settings_appearance_dynamic">Динамические цвета</string>
+    <string name="settings_appearance_dynamic_hint">Использовать цвета системных обоев на Android 12+. Когда выключено, применяется фирменная бирюзовая палитра.</string>
     <string name="settings_about_header">О приложении</string>
     <string name="settings_about_app">Приложение</string>
     <string name="settings_about_version">Версия</string>

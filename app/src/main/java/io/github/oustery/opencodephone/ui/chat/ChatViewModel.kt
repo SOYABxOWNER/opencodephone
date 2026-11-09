@@ -74,6 +74,10 @@ data class ChatUiState(
     val showModels: Boolean = false,
     val attachments: List<PendingAttachment> = emptyList(),
     val error: String? = null,
+    // Skeleton gates (M3E audit E-017): sheets show placeholders instead of
+    // a misleading "empty" label while the first fetch is still in flight.
+    val sessionsLoading: Boolean = false,
+    val providersLoading: Boolean = false,
 )
 
 class ChatViewModel(private val graph: AppGraph) : ViewModel() {
@@ -120,7 +124,14 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
     }
 
     private suspend fun connect() {
-        _state.update { it.copy(connection = ChatConnection.CONNECTING, error = null) }
+        _state.update {
+            it.copy(
+                connection = ChatConnection.CONNECTING,
+                error = null,
+                sessionsLoading = true,
+                providersLoading = true,
+            )
+        }
         try {
             val health = activeClient.health()
             syncProviderKeys()
@@ -134,7 +145,12 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
             throw e
         } catch (e: Exception) {
             _state.update {
-                it.copy(connection = ChatConnection.ERROR, error = e.message)
+                it.copy(
+                    connection = ChatConnection.ERROR,
+                    error = e.message,
+                    sessionsLoading = false,
+                    providersLoading = false,
+                )
             }
         }
     }
@@ -153,6 +169,7 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                 providers = io.github.oustery.opencodephone.core.model.OpenCodeCatalog.providers(providers),
                 connectedProviders = providers.connected,
                 modelSelection = selected?.let { ModelSelection("opencode", it.id) },
+                providersLoading = false,
             )
         }
     }
@@ -162,7 +179,7 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
         _state.update { state ->
             val active = state.activeSessionId?.takeIf { id -> sessions.any { it.id == id } }
                 ?: sessions.firstOrNull()?.id
-            state.copy(sessions = sessions, activeSessionId = active)
+            state.copy(sessions = sessions, activeSessionId = active, sessionsLoading = false)
         }
         _state.value.activeSessionId?.let { loadMessages(it, required = true) }
     }
