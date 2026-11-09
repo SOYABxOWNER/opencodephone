@@ -193,6 +193,16 @@
     <string name="chat_diff_hint">Файлы, которые агент менял в этой сессии.</string>
     <string name="chat_diff_empty">В этой сессии пока нет изменений файлов.</string>
     <string name="chat_diff_patch">Патч</string>
+    <string name="git_commit_title">Коммит изменений</string>
+    <string name="git_commit_stage_hint">Выберите, какие файлы добавить в коммит:</string>
+    <string name="files_rename">Переименовать</string>
+    <string name="files_rename_hint">Новое имя (без разделителей пути)</string>
+    <string name="files_delete_title">Удалить %1$s?</string>
+    <string name="files_delete_file_body">Файл будет навсегда удалён из рабочего пространства. Отменить это действие здесь нельзя.</string>
+    <string name="files_delete_dir_body">Папка и всё её содержимое будут навсегда удалены. Отменить это действие здесь нельзя.</string>
+    <string name="files_actions_file_hint">Выберите действие для файла.</string>
+    <string name="files_actions_dir_hint">Выберите действие для папки.</string>
+    <string name="files_row_actions">Действия с файлом</string>
     <string name="chat_project_chip">Проект: %1$s</string>
     <string name="terminal_project">проект</string>
 </resources>
