@@ -15,6 +15,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -79,11 +81,14 @@ fun TerminalScreen(graph: AppGraph) {
                     contentPadding = PaddingValues(12.dp),
                 ) {
                     items(state.output) { line ->
-                        Text(
-                            text = line,
-                            style = io.github.oustery.opencodephone.core.designsystem.CodeTypography.output,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        // Copyable output without a toolbar (M3E audit E-011).
+                        SelectionContainer {
+                            Text(
+                                text = line,
+                                style = io.github.oustery.opencodephone.core.designsystem.CodeTypography.output,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
             }
@@ -124,14 +129,15 @@ fun TerminalScreen(graph: AppGraph) {
                     textStyle = io.github.oustery.opencodephone.core.designsystem.CodeTypography.editor,
                     shape = MaterialTheme.shapes.small,
                 )
-                IconButton(
+                // Primary action keeps the same filled emphasis as the chat
+                // send button (M3E audit E-008).
+                FilledIconButton(
                     onClick = { vm.send() },
                     enabled = state.alive && state.draft.isNotBlank(),
                 ) {
                     Icon(
                         painterResource(R.drawable.ic_send),
                         contentDescription = stringResource(R.string.terminal_run),
-                        tint = MaterialTheme.colorScheme.primary,
                     )
                 }
             }
