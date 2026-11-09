@@ -37,6 +37,31 @@ class WorkspaceFiles(workspace: File) {
         return file
     }
 
+    /** Delete a file or a whole directory tree inside the workspace (F-007). */
+    fun delete(file: File) {
+        val target = checked(file)
+        require(target.toPath() != root) { "Workspace root cannot be deleted" }
+        target.deleteRecursively()
+    }
+
+    /** Rename a file or directory inside its parent directory (F-007). */
+    fun rename(file: File, newName: String): File {
+        val name = newName.trim()
+        require(name.isNotEmpty() && name != "." && name != ".." && !name.contains('/') && !name.contains('\\')) {
+            "Invalid name"
+        }
+        val target = checked(file)
+        require(target.toPath() != root) { "Workspace root cannot be renamed" }
+        val dest = checked(File(target.parentFile, name))
+        require(!dest.exists()) { "Name already in use" }
+        try {
+            Files.move(target.toPath(), dest.toPath(), ATOMIC_MOVE)
+        } catch (e: java.nio.file.AtomicMoveNotSupportedException) {
+            Files.move(target.toPath(), dest.toPath())
+        }
+        return dest
+    }
+
     private fun bytes(file: File): ByteArray {
         val out = java.io.ByteArrayOutputStream()
         Files.newByteChannel(checked(file).toPath(), setOf(READ, NOFOLLOW_LINKS)).use { channel ->

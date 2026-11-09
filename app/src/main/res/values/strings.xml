@@ -94,8 +94,18 @@
     <string name="git_clean">clean</string>
     <string name="git_changes">%1$d changed</string>
     <string name="git_commit_hint">Commit message</string>
+    <string name="git_commit_title">Commit changes</string>
+    <string name="git_commit_stage_hint">Choose which changed files to stage:</string>
     <string name="git_commit">Commit</string>
     <string name="git_push">Push</string>
+    <string name="files_rename">Rename</string>
+    <string name="files_rename_hint">New name (no path separators)</string>
+    <string name="files_delete_title">Delete %1$s?</string>
+    <string name="files_delete_file_body">This permanently removes the file from the workspace. The change cannot be undone here.</string>
+    <string name="files_delete_dir_body">The folder and everything inside it will be permanently removed. The change cannot be undone here.</string>
+    <string name="files_actions_file_hint">Choose an action for this file.</string>
+    <string name="files_actions_dir_hint">Choose an action for this folder.</string>
+    <string name="files_row_actions">File actions</string>
 
     <!-- Terminal -->
     <string name="terminal_env_not_ready">The Linux environment is not installed yet. Finish the setup on the home screen first.</string>

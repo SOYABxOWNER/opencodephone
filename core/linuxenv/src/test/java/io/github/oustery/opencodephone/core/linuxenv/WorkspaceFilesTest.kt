@@ -36,4 +36,39 @@ class WorkspaceFilesTest {
             assertFalse(root.listFiles()!!.any { it.name.endsWith(".tmp") })
         } finally { root.deleteRecursively() }
     }
+    @Test fun `delete removes files and trees but not the root`() {
+        val root = Files.createTempDirectory("workspace-delete").toFile()
+        try {
+            val fs = WorkspaceFiles(root)
+            val file = fs.create("gone.txt")
+            val dir = fs.create("dir/")
+            java.io.File(dir, "nested.txt").writeText("x")
+            fs.delete(file)
+            assertFalse(file.exists())
+            fs.delete(dir)
+            assertFalse(dir.exists())
+            assertThrows(IllegalArgumentException::class.java) { fs.delete(root) }
+            assertThrows(IllegalArgumentException::class.java) { fs.delete(java.io.File(root, "../escape")) }
+            assertEquals(0, root.listFiles()!!.size)
+        } finally { root.deleteRecursively() }
+    }
+    @Test fun `rename stays inside parent and rejects collisions`() {
+        val root = Files.createTempDirectory("workspace-rename").toFile()
+        try {
+            val fs = WorkspaceFiles(root)
+            val file = fs.create("old.txt")
+            val dest = fs.rename(file, "new name.txt")
+            assertEquals("new name.txt", dest.name)
+            assertFalse(file.exists())
+            assertEquals("", dest.readText())
+            val dir = fs.create("d/")
+            java.io.File(dir, "a.txt").writeText("y")
+            val moved = fs.rename(dir, "e")
+            assertEquals("a.txt", java.io.File(moved, "a.txt").name)
+            assertThrows(IllegalArgumentException::class.java) { fs.rename(moved, "..") }
+            assertThrows(IllegalArgumentException::class.java) { fs.rename(moved, "sub/name") }
+            assertThrows(IllegalArgumentException::class.java) { fs.rename(moved, "e") }
+            assertThrows(IllegalArgumentException::class.java) { fs.rename(moved, " ") }
+        } finally { root.deleteRecursively() }
+    }
 }
