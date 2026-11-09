@@ -157,7 +157,8 @@ class OpenCodeClientTest {
         assertFalse("pdf", Attachments.isInlineable("application/pdf", "spec.pdf"))
         assertFalse("zip", Attachments.isInlineable("", "archive.zip"))
         val block = Attachments.inlineBlock("notes.md", "hello")
-        assertTrue("block=[$block]", block.startsWith("Attached file \"notes.md\":\n```markdown\n"))
+        // The fence language is the file EXTENSION ("md"), not the full name.
+        assertTrue("block=[$block]", block.startsWith("Attached file \"notes.md\":\n```md\n"))
         assertTrue("block=[$block]", block.endsWith("```"))
     }
 
