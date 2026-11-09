@@ -204,5 +204,25 @@
     <string name="files_actions_dir_hint">Выберите действие для папки.</string>
     <string name="files_row_actions">Действия с файлом</string>
     <string name="chat_project_chip">Проект: %1$s</string>
+    <string name="chat_attach_remote_unsupported">В режиме удалённого сервера можно прикреплять только текстовые файлы до %1$d КБ — сервер не может читать файлы с телефона. Для бинарных файлов нужно локальное окружение.</string>
+    <string name="settings_backup_header">Резервная копия настроек</string>
+    <string name="settings_backup_hint">Экспортирует несекретные настройки — адрес сервера (без пароля), Git-профиль (без токена), выбранную модель, оформление и способ запуска — в JSON-файл. Импорт заменяет эти настройки; секреты не экспортируются, не импортируются и не перезаписываются.</string>
+    <string name="settings_backup_export">Экспортировать настройки</string>
+    <string name="settings_backup_import">Импортировать настройки</string>
+    <string name="settings_backup_done">Настройки экспортированы</string>
+    <string name="settings_backup_open_failed">Не удалось открыть выбранный файл</string>
+    <string name="settings_import_done">Импортировано разделов настроек: %1$d</string>
+    <string name="settings_import_confirm_title">Импортировать настройки?</string>
+    <string name="settings_import_confirm_body">Несекретные настройки из файла заменят текущие. Секреты не импортируются: существующие пароли и ключи останутся без изменений. Изменение подключения применяется сразу.</string>
+    <string name="settings_data_header">Хранимые данные</string>
+    <string name="settings_data_hint">Каждую категорию служебных данных можно очистить отдельно. Проекты в рабочем пространстве здесь не затрагиваются.</string>
+    <string name="settings_data_item_drafts">Черновики (аварийные копии)</string>
+    <string name="settings_data_item_uploads">Вложения (workspace/uploads)</string>
+    <string name="settings_data_item_cache">Кэш установщика (архивы, временные файлы)</string>
+    <string name="settings_data_clear_title">Очистить данные?</string>
+    <string name="settings_data_confirm_drafts">Удалить сохранённые аварийные копии текста чата и буфера редактора?</string>
+    <string name="settings_data_confirm_uploads">Удалить все копии вложений в workspace/uploads? Агент больше не сможет читать файлы из прежних чатов.</string>
+    <string name="settings_data_confirm_cache">Удалить скачанные установочные архивы и временные файлы? Установленное окружение не затрагивается.</string>
+    <string name="settings_data_done">Очищено: %1$s</string>
     <string name="terminal_project">проект</string>
 </resources>
