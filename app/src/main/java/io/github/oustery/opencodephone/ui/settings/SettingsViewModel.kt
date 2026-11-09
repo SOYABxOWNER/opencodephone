@@ -332,7 +332,7 @@ class SettingsViewModel(private val graph: AppGraph) : ViewModel() {
     /** Remove installer leftovers (downloaded archives, temp files). */
     fun clearInstallerCache() {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            graph.layout.downloadsDir.listFiles()?.forEach { it.deleteRecursively() }
+            graph.layout.downloadDir.listFiles()?.forEach { it.deleteRecursively() }
             graph.layout.tmpDir.listFiles()?.forEach { it.deleteRecursively() }
             publishDataCleared(io.github.oustery.opencodephone.R.string.settings_data_item_cache)
         }
