@@ -1,5 +1,7 @@
 package io.github.oustery.opencodephone.ui.settings
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -78,6 +80,14 @@ fun SettingsScreen(graph: AppGraph) {
     // scrolls. Settings is the longest screen, so it carries the pattern;
     // dense screens (chat/files/terminal) keep the compact ScreenHeader.
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    // Settings backup (functional audit F-013) via the storage Access Framework.
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) vm.exportSettings(uri)
+    }
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) vm.onImportPicked(uri)
+    }
+    var confirmClear by remember { mutableStateOf<String?>(null) }
 
     Column(modifier = Modifier.fillMaxSize().nestedScroll(scrollBehavior.nestedScrollConnection)) {
         LargeFlexibleTopAppBar(
@@ -373,6 +383,51 @@ fun SettingsScreen(graph: AppGraph) {
                     }
                 }
 
+                // ---- Backup & data (functional audit F-013) -----------------
+                OcSectionHeader(stringResource(R.string.settings_backup_header))
+                Card(shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            stringResource(R.string.settings_backup_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = { exportLauncher.launch("opencodephone-settings.json") }) {
+                                Text(stringResource(R.string.settings_backup_export))
+                            }
+                            OutlinedButton(onClick = {
+                                importLauncher.launch(arrayOf("application/json", "text/plain", "application/octet-stream"))
+                            }) {
+                                Text(stringResource(R.string.settings_backup_import))
+                            }
+                        }
+                        state.dataMessage?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+
+                OcSectionHeader(stringResource(R.string.settings_data_header))
+                Card(shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            stringResource(R.string.settings_data_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        OutlinedButton(onClick = { confirmClear = "drafts" }) {
+                            Text(stringResource(R.string.settings_data_item_drafts))
+                        }
+                        OutlinedButton(onClick = { confirmClear = "uploads" }) {
+                            Text(stringResource(R.string.settings_data_item_uploads))
+                        }
+                        OutlinedButton(onClick = { confirmClear = "cache" }) {
+                            Text(stringResource(R.string.settings_data_item_cache))
+                        }
+                    }
+                }
+
                 // ---- About ---------------------------------------------------
                 OcSectionHeader(stringResource(R.string.settings_about_header))
                 Card(shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
@@ -403,6 +458,51 @@ fun SettingsScreen(graph: AppGraph) {
             known = KNOWN_PROVIDERS,
             onSave = { id, key -> vm.saveProviderKey(id, key) },
             onDismiss = { vm.showAddProvider(false) },
+        )
+    }
+    if (state.showImportConfirm) {
+        AlertDialog(
+            onDismissRequest = { vm.dismissImportConfirm() },
+            title = { Text(stringResource(R.string.settings_import_confirm_title)) },
+            text = { Text(stringResource(R.string.settings_import_confirm_body)) },
+            confirmButton = {
+                Button(onClick = { vm.confirmImport() }) {
+                    Text(stringResource(R.string.settings_backup_import))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { vm.dismissImportConfirm() }) { Text(stringResource(R.string.action_cancel)) }
+            },
+        )
+    }
+    confirmClear?.let { kind ->
+        AlertDialog(
+            onDismissRequest = { confirmClear = null },
+            title = { Text(stringResource(R.string.settings_data_clear_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        when (kind) {
+                            "drafts" -> R.string.settings_data_confirm_drafts
+                            "uploads" -> R.string.settings_data_confirm_uploads
+                            else -> R.string.settings_data_confirm_cache
+                        },
+                    ),
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    when (kind) {
+                        "drafts" -> vm.clearDrafts()
+                        "uploads" -> vm.clearUploads()
+                        else -> vm.clearInstallerCache()
+                    }
+                    confirmClear = null
+                }) { Text(stringResource(R.string.action_delete)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmClear = null }) { Text(stringResource(R.string.action_cancel)) }
+            },
         )
     }
     if (state.showReinstallConfirm) {

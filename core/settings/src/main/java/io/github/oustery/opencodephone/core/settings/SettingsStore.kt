@@ -217,6 +217,104 @@ class SettingsStore(private val context: Context) {
 
     fun setDynamicColor(enabled: Boolean) = edit { it.putBoolean(KEY_DYNAMIC_COLOR, enabled) }
 
+    // ---------------------------------------------------------- Backup
+
+    /**
+     * User-facing settings backup (functional audit F-013). Only non-secret
+     * values are exported: server address without the password, Git identity
+     * without the token, model selection, appearance, onboarding choice and
+     * the selected project. Secrets never leave the encrypted store.
+     */
+    fun exportNonSecret(): org.json.JSONObject {
+        val server = serverConfig()
+        val git = gitConfig()
+        val model = modelSelection()
+        return org.json.JSONObject()
+            .put("schema", 1)
+            .put(
+                "server",
+                org.json.JSONObject()
+                    .put("mode", server.mode.name)
+                    .put("host", server.host)
+                    .put("port", server.port)
+                    .put("username", server.username),
+            )
+            .put(
+                "git",
+                org.json.JSONObject()
+                    .put("userName", git.userName)
+                    .put("userEmail", git.userEmail),
+            )
+            .put(
+                "model",
+                org.json.JSONObject()
+                    .put("providerId", model.providerId)
+                    .put("modelId", model.modelId),
+            )
+            .put("opencodePin", opencodeVersionPin())
+            .put("dynamicColor", dynamicColor())
+            .put("setupChoice", setupChoice().name)
+            .put("selectedProject", selectedProject().orEmpty())
+    }
+
+    /**
+     * Apply an exported snapshot. Returns the number of top-level sections
+     * found; unknown fields are ignored and secrets (password, provider
+     * keys, Git token) are untouched by construction.
+     */
+    fun importNonSecret(json: org.json.JSONObject): Int {
+        var sections = 0
+        if (json.has("server")) {
+            val s = json.optJSONObject("server")
+            if (s != null) {
+                val mode = runCatching {
+                    ServerMode.valueOf(s.optString("mode", ServerMode.LOCAL.name))
+                }.getOrDefault(ServerMode.LOCAL)
+                val port = s.optInt("port", 4096).coerceIn(1, 65535)
+                setServerConfig(
+                    ServerConfig(
+                        mode = mode,
+                        host = s.optString("host", "127.0.0.1").ifBlank { "127.0.0.1" },
+                        port = port,
+                        username = s.optString("username", "opencode").ifBlank { "opencode" },
+                    ),
+                )
+                sections++
+            }
+        }
+        if (json.has("git")) {
+            val g = json.optJSONObject("git")
+            if (g != null) {
+                val current = gitConfig()
+                setGitConfig(
+                    GitConfig(
+                        userName = g.optString("userName", current.userName),
+                        userEmail = g.optString("userEmail", current.userEmail),
+                        githubToken = current.githubToken,
+                    ),
+                )
+                sections++
+            }
+        }
+        if (json.has("model")) {
+            val m = json.optJSONObject("model")
+            if (m != null) {
+                setModelSelection(ModelSelection(m.optString("providerId"), m.optString("modelId")))
+                sections++
+            }
+        }
+        if (json.has("opencodePin")) {
+            val pin = json.optString("opencodePin", Pins.OPENCODE_VERSION)
+            if (pin.isNotBlank()) setOpencodeVersionPin(pin)
+        }
+        if (json.has("dynamicColor")) setDynamicColor(json.optBoolean("dynamicColor", false))
+        if (json.has("setupChoice")) {
+            runCatching { setSetupChoice(SetupChoice.valueOf(json.getString("setupChoice"))) }
+        }
+        if (json.has("selectedProject")) setSelectedProject(json.optString("selectedProject").ifBlank { null })
+        return sections
+    }
+
     companion object {
         /** Destructive recovery must only be invoked after explicit UI confirmation. */
         fun resetEncryptedSettings(context: Context) {
