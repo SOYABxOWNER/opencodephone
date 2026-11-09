@@ -13,8 +13,10 @@ import androidx.compose.ui.platform.LocalContext
 /**
  * OpenCodePhone theme built on Material 3 Expressive.
  *
- * Dynamic color is available on Android 12+ but disabled by default so the
- * branded teal identity stays consistent across devices.
+ * Dynamic color is available on Android 12+ and disabled by default so the
+ * branded teal identity stays consistent across devices. Since M3E audit
+ * E-016 the preference is user-facing: Settings → Appearance → Dynamic color,
+ * persisted in the secure settings store and observed live by MainActivity.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable

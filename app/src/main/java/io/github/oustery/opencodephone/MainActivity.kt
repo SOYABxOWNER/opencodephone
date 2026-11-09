@@ -37,8 +37,18 @@ class MainActivity : ComponentActivity() {
         }
         val app = application as OpenCodePhoneApp
         setContent {
-            OpenCodePhoneTheme {
-                val startup by app.startup.collectAsStateWithLifecycle()
+            val startup by app.startup.collectAsStateWithLifecycle()
+            // Dynamic color follows the persisted preference as soon as the
+            // settings store is ready; the brief Loading window keeps the
+            // branded teal palette (M3E audit E-016).
+            val dynamicColor = if (startup is AppStartup.Ready) {
+                val graph = (startup as AppStartup.Ready).graph
+                val enabled by graph.dynamicColor.collectAsStateWithLifecycle()
+                enabled
+            } else {
+                false
+            }
+            OpenCodePhoneTheme(dynamicColor = dynamicColor) {
                 val resetConfirm = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
                 if (resetConfirm.value && startup == AppStartup.Failed) {
                     androidx.compose.material3.AlertDialog(

@@ -36,6 +36,8 @@ dependencies {
     api(libs.compose.ui.graphics)
     api(libs.compose.material3)
     api(libs.androidx.core.ktx)
+    // MaterialShapes/Morph (M3E audit E-015) compile against androidx.graphics.shapes.
+    implementation(libs.graphics.shapes)
 
     implementation(libs.androidx.activity.compose)
 

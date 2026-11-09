@@ -57,11 +57,13 @@
     <string name="chat_size_b">%1$s B</string>
     <string name="chat_send">Send</string>
     <string name="chat_stop">Stop</string>
+    <string name="chat_sessions_loading">Loading sessions…</string>
     <string name="chat_sessions_empty">No sessions yet</string>
     <string name="chat_session_untitled">Untitled session</string>
     <string name="chat_new_session">New session</string>
     <string name="chat_models_title">Models</string>
     <string name="chat_models_hint">OpenCode models available on this server. Free models do not require your own provider API key; availability and limits are managed by OpenCode.</string>
+    <string name="chat_models_loading">Loading models…</string>
     <string name="chat_models_empty">No available OpenCode models. Check the server network and OpenCode provider configuration, then reconnect.</string>
     <string name="chat_provider_connected">connected</string>
     <string name="chat_provider_no_key">no key</string>
@@ -72,6 +74,7 @@
     <string name="files_clone">Clone</string>
     <string name="files_new_file">New file</string>
     <string name="files_new_file_hint">path/name.txt (trailing / creates a folder)</string>
+    <string name="files_loading">Loading workspace…</string>
     <string name="files_empty_title">Empty workspace</string>
     <string name="files_empty_body">Clone a git repository or create a file to start working with the agent.</string>
     <string name="files_clone_title">Clone repository</string>
@@ -89,6 +92,7 @@
     <string name="terminal_run">Run</string>
 
     <!-- Settings -->
+    <string name="settings_subtitle">Server, providers and environment</string>
     <string name="settings_server_header">OpenCode server</string>
     <string name="settings_server_local">Local</string>
     <string name="settings_server_remote">Remote</string>
@@ -116,6 +120,9 @@
     <string name="settings_env_pin_hint">Version installed at the next environment reset. Changes apply after reinstall.</string>
     <string name="settings_env_reinstall">Reinstall environment</string>
     <string name="settings_env_reinstall_confirm">This deletes the Debian environment (workspace files are kept) and repeats the full setup. Continue?</string>
+    <string name="settings_appearance_header">Appearance</string>
+    <string name="settings_appearance_dynamic">Dynamic color</string>
+    <string name="settings_appearance_dynamic_hint">Use wallpaper-based colors on Android 12+. When off, the teal brand palette is applied.</string>
     <string name="settings_about_header">About</string>
     <string name="settings_about_app">Application</string>
     <string name="settings_about_version">Version</string>

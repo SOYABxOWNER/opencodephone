@@ -19,16 +19,21 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,6 +42,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -46,7 +52,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.oustery.opencodephone.AppGraph
 import io.github.oustery.opencodephone.R
 import io.github.oustery.opencodephone.ScreenBody
-import io.github.oustery.opencodephone.ScreenHeader
 import io.github.oustery.opencodephone.core.designsystem.OcChipTone
 import io.github.oustery.opencodephone.core.designsystem.OcInfoRow
 import io.github.oustery.opencodephone.core.designsystem.OcSectionHeader
@@ -59,6 +64,7 @@ private val KNOWN_PROVIDERS = listOf(
     "deepseek", "mistral", "xai", "azure", "amazon-bedrock", "github-copilot",
 )
 
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun SettingsScreen(graph: AppGraph) {
     val vm: SettingsViewModel = viewModel(factory = VmFactory.of { SettingsViewModel(graph) })
@@ -67,9 +73,18 @@ fun SettingsScreen(graph: AppGraph) {
     val runtimeState by graph.runtime.serverState.collectAsStateWithLifecycle()
     // Mode-switch confirmation (M3E audit E-010).
     val haptics = LocalHapticFeedback.current
+    // Expressive collapsing header (M3E audit E-019): the flagship
+    // LargeFlexibleTopAppBar shrinks to a compact bar as the settings body
+    // scrolls. Settings is the longest screen, so it carries the pattern;
+    // dense screens (chat/files/terminal) keep the compact ScreenHeader.
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        ScreenHeader(title = stringResource(R.string.tab_settings))
+    Column(modifier = Modifier.fillMaxSize().nestedScroll(scrollBehavior.nestedScrollConnection)) {
+        LargeFlexibleTopAppBar(
+            title = { Text(stringResource(R.string.tab_settings)) },
+            subtitle = { Text(stringResource(R.string.settings_subtitle)) },
+            scrollBehavior = scrollBehavior,
+        )
         ScreenBody {
             Column(
                 modifier = Modifier
@@ -312,6 +327,35 @@ fun SettingsScreen(graph: AppGraph) {
                         )
                         OutlinedButton(onClick = { vm.showReinstallConfirm(true) }) {
                             Text(stringResource(R.string.settings_env_reinstall))
+                        }
+                    }
+                }
+
+                // ---- Appearance ----------------------------------------------
+                OcSectionHeader(stringResource(R.string.settings_appearance_header))
+                Card(shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(stringResource(R.string.settings_appearance_dynamic), style = MaterialTheme.typography.bodyLarge)
+                                Text(
+                                    stringResource(R.string.settings_appearance_dynamic_hint),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Switch(
+                                checked = state.dynamicColor,
+                                onCheckedChange = { enabled ->
+                                    // Confirmation haptic, same pattern as mode switch (E-010).
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    vm.setDynamicColor(enabled)
+                                },
+                            )
                         }
                     }
                 }

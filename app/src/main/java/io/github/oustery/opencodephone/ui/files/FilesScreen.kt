@@ -60,6 +60,7 @@ import io.github.oustery.opencodephone.ScreenBody
 import io.github.oustery.opencodephone.ScreenHeader
 import io.github.oustery.opencodephone.core.designsystem.OcChipTone
 import io.github.oustery.opencodephone.core.designsystem.OcEmptyState
+import io.github.oustery.opencodephone.core.designsystem.OcSkeletonRows
 import io.github.oustery.opencodephone.core.designsystem.OcStatusChip
 import io.github.oustery.opencodephone.ui.common.VmFactory
 
@@ -123,6 +124,21 @@ fun FilesScreen(graph: AppGraph) {
                     actionText = stringResource(R.string.files_clone),
                     onAction = { vm.showClone(true) },
                 )
+            } else if (state.entries.isEmpty() && state.busy == null) {
+                // The first scan has not reported yet (workspaceEmpty is only
+                // decided after it completes): placeholder rows instead of a
+                // blank screen (M3E audit E-017).
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(
+                        stringResource(R.string.files_loading),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OcSkeletonRows(rows = 6)
+                }
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(state.entries, key = { it.file.absolutePath }) { entry ->

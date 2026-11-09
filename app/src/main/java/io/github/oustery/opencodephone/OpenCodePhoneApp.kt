@@ -51,6 +51,16 @@ class AppGraph(context: Application) {
     fun stopLocalServer() { _localServerEnabled.value = false }
     fun startLocalServer() { _localServerEnabled.value = true }
 
+    // Appearance preference read once the graph is ready; the theme observes
+    // this flow so the Settings switch applies immediately (M3E audit E-016).
+    private val _dynamicColor = MutableStateFlow(settings.dynamicColor())
+    val dynamicColor: StateFlow<Boolean> = _dynamicColor
+
+    fun setDynamicColor(enabled: Boolean) {
+        settings.setDynamicColor(enabled)
+        _dynamicColor.value = enabled
+    }
+
     init {
         appScope.launch {
             observeServerLifecycle(

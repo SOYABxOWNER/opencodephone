@@ -13,13 +13,26 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.MaterialShapes
+import androidx.compose.material3.toPath
+import androidx.compose.material3.toShape
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
@@ -39,16 +52,24 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.graphics.shapes.Morph
 
 /** Status chip used across screens (connection state, phase labels). */
 enum class OcChipTone { PRIMARY, SECONDARY, TERTIARY, ERROR, NEUTRAL }
@@ -222,5 +243,105 @@ fun OcDisclosure(
             exit = shrinkVertically(animationSpec = tween(durationMillis = 180)) +
                 fadeOut(animationSpec = tween(durationMillis = 120)),
         ) { content() }
+    }
+}
+
+/**
+ * Expressive empty-state emblem (M3E audit E-015): the icon sits inside a
+ * MaterialShapes container. With `animated = true` the container slowly
+ * morphs between two shapes. Intended only for balanced empty states —
+ * never for errors or dense utility screens, where decoration competes
+ * with recovery actions.
+ *
+ * Verified against the pinned material3 1.5.0-rc01 artifact:
+ * `MaterialShapes` companion properties, `RoundedPolygon.toShape()` and
+ * `Morph.toPath(progress, path)` are all @ExperimentalMaterial3ExpressiveApi;
+ * `androidx.graphics.shapes.Morph` comes from graphics-shapes 1.0.1.
+ */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+fun OcShapeEmblem(
+    icon: Painter,
+    modifier: Modifier = Modifier,
+    animated: Boolean = false,
+    size: Dp = 72.dp,
+    containerColor: Color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    tint: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+) {
+    Box(modifier = modifier.size(size), contentAlignment = Alignment.Center) {
+        if (animated) {
+            val morph = remember { Morph(MaterialShapes.Cookie9Sided, MaterialShapes.Sunny) }
+            val progress by rememberInfiniteTransition(label = "shape-emblem-morph").animateFloat(
+                initialValue = 0f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(durationMillis = 2600, easing = FastOutSlowInEasing),
+                    repeatMode = RepeatMode.Reverse,
+                ),
+                label = "shape-emblem-progress",
+            )
+            val morphPath = remember { Path() }
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                // MaterialShapes polygons are normalized to the unit square;
+                // Morph has no toShape(), so scale the generated path here.
+                val path = morph.toPath(progress = progress, path = morphPath)
+                scale(scaleX = this.size.width, scaleY = this.size.height, pivot = Offset.Zero) {
+                    drawPath(path, containerColor)
+                }
+            }
+        } else {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                shape = MaterialShapes.Sunny.toShape(),
+                color = containerColor,
+            ) {}
+        }
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(size * 0.45f))
+    }
+}
+
+/**
+ * Pulsing placeholder row for known-shape loading content (M3E audit E-017).
+ * Stack [OcSkeletonRow]s where a list is expected instead of showing a bare
+ * spinner. Cleared from the semantics tree: the surrounding screen keeps an
+ * accessible loading label, so TalkBack is not fed meaningless nodes.
+ */
+@Composable
+fun OcSkeletonRow(
+    modifier: Modifier = Modifier,
+    height: Dp = 14.dp,
+    widthFraction: Float = 1f,
+) {
+    val pulse by rememberInfiniteTransition(label = "skeleton-pulse").animateFloat(
+        initialValue = 0.35f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "skeleton-pulse-alpha",
+    )
+    Surface(
+        modifier = modifier
+            .fillMaxWidth(widthFraction)
+            .height(height)
+            .graphicsLayer { alpha = pulse }
+            .clearAndSetSemantics { },
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+    ) {}
+}
+
+/** A short stack of skeleton rows; the last row is shorter to hint text flow. */
+@Composable
+fun OcSkeletonRows(
+    rows: Int = 4,
+    modifier: Modifier = Modifier,
+    rowHeight: Dp = 14.dp,
+) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        repeat(rows) { index ->
+            OcSkeletonRow(height = rowHeight, widthFraction = if (index % 3 == 2) 0.6f else 1f)
+        }
     }
 }
