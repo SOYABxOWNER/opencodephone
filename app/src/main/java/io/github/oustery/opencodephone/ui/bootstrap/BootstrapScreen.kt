@@ -17,6 +17,7 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -34,6 +35,7 @@ import io.github.oustery.opencodephone.R
 import io.github.oustery.opencodephone.core.designsystem.OcChipTone
 import io.github.oustery.opencodephone.core.designsystem.OcStatusChip
 import io.github.oustery.opencodephone.core.model.BootstrapPhase
+import io.github.oustery.opencodephone.core.settings.SetupChoice
 
 /**
  * One-time environment setup wizard. Wavy progress indicators are the
@@ -43,6 +45,7 @@ import io.github.oustery.opencodephone.core.model.BootstrapPhase
 @Composable
 fun BootstrapScreen(graph: AppGraph) {
     val state by graph.bootstrap.state.collectAsStateWithLifecycle()
+    val setupChoice by graph.setupChoice.collectAsStateWithLifecycle()
 
     // Setup runs heavy downloads and process work; keep the screen (and thus
     // the app in the foreground) on so Android does not freeze or kill us.
@@ -75,76 +78,116 @@ fun BootstrapScreen(graph: AppGraph) {
         )
         Spacer(Modifier.height(40.dp))
 
-        Surface(
-            shape = MaterialTheme.shapes.large,
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                when (state.phase) {
-                    BootstrapPhase.FAILED -> {
-                        Text(
-                            text = stringResource(R.string.bootstrap_failed_title),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                        Text(
-                            text = state.error ?: "",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        if (state.log.isNotEmpty()) {
-                            Surface(
-                                shape = MaterialTheme.shapes.small,
-                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Column(modifier = Modifier.padding(12.dp)) {
-                                    Text(
-                                        text = stringResource(R.string.bootstrap_details),
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                    Spacer(Modifier.height(6.dp))
-                                    Text(
-                                        text = state.log.takeLast(12).joinToString("\n"),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontFamily = FontFamily.Monospace,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                            }
-                        }
-                        Text(
-                            text = stringResource(R.string.bootstrap_hint_kill),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Button(onClick = { graph.bootstrap.retry() }) {
-                            Text(stringResource(R.string.bootstrap_retry))
-                        }
+        if (state.phase == BootstrapPhase.NOT_STARTED && setupChoice == SetupChoice.UNSET) {
+            // Remote-first onboarding (functional audit F-022): before any
+            // heavy download the user decides between the local environment
+            // and an existing opencode server.
+            Surface(
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = stringResource(R.string.bootstrap_choice_title),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        text = stringResource(R.string.bootstrap_choice_local_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Button(
+                        onClick = { graph.chooseSetup(SetupChoice.LOCAL) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(stringResource(R.string.bootstrap_choice_local))
                     }
-                    else -> {
-                        val progress = state.progress
-                        if (progress != null) {
-                            LinearWavyProgressIndicator(
-                                progress = { progress.coerceIn(0f, 1f) },
-                                modifier = Modifier.fillMaxWidth(),
-                                wavelength = 28.dp,
-                            )
-                        } else {
-                            LinearWavyProgressIndicator(modifier = Modifier.fillMaxWidth())
-                        }
-                        Text(
-                            text = state.label.ifEmpty { stringResource(R.string.bootstrap_preparing) },
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                        if (state.message.isNotEmpty()) {
+                    Text(
+                        text = stringResource(R.string.bootstrap_choice_remote_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedButton(
+                        onClick = { graph.chooseSetup(SetupChoice.REMOTE_ONLY) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(stringResource(R.string.bootstrap_choice_remote))
+                    }
+                }
+            }
+        } else {
+            Surface(
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    when (state.phase) {
+                        BootstrapPhase.FAILED -> {
                             Text(
-                                text = state.message,
+                                text = stringResource(R.string.bootstrap_failed_title),
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                            Text(
+                                text = state.error ?: "",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                            if (state.log.isNotEmpty()) {
+                                Surface(
+                                    shape = MaterialTheme.shapes.small,
+                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Text(
+                                            text = stringResource(R.string.bootstrap_details),
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                        Spacer(Modifier.height(6.dp))
+                                        Text(
+                                            text = state.log.takeLast(12).joinToString("\n"),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontFamily = FontFamily.Monospace,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                            }
+                            Text(
+                                text = stringResource(R.string.bootstrap_hint_kill),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Button(onClick = { graph.bootstrap.retry() }) {
+                                Text(stringResource(R.string.bootstrap_retry))
+                            }
+                        }
+                        else -> {
+                            val progress = state.progress
+                            if (progress != null) {
+                                LinearWavyProgressIndicator(
+                                    progress = { progress.coerceIn(0f, 1f) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    wavelength = 28.dp,
+                                )
+                            } else {
+                                LinearWavyProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            }
+                            Text(
+                                text = state.label.ifEmpty { stringResource(R.string.bootstrap_preparing) },
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            if (state.message.isNotEmpty()) {
+                                Text(
+                                    text = state.message,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                     }
                 }

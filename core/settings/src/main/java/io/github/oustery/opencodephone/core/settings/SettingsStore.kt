@@ -8,6 +8,13 @@ import io.github.oustery.opencodephone.core.model.Pins
 
 enum class ServerMode { LOCAL, REMOTE }
 
+/**
+ * First-run onboarding path (functional audit F-022).
+ * UNSET means the choice screen is still pending; REMOTE_ONLY skips the
+ * heavy Debian download until the user asks for the local environment.
+ */
+enum class SetupChoice { UNSET, LOCAL, REMOTE_ONLY }
+
 data class ServerConfig(
     val mode: ServerMode = ServerMode.LOCAL,
     val host: String = "127.0.0.1",
@@ -181,6 +188,28 @@ class SettingsStore(private val context: Context) {
 
     fun setBootstrapCompleted() = edit { it.putBoolean(KEY_BOOTSTRAP_DONE, true) }
 
+    // ---------------------------------------------------------- Onboarding
+
+    /** Remote-first onboarding choice (F-022); persists across restarts. */
+    fun setupChoice(): SetupChoice = runCatching {
+        SetupChoice.valueOf(prefs.getString(KEY_SETUP_CHOICE, SetupChoice.UNSET.name) ?: SetupChoice.UNSET.name)
+    }.getOrDefault(SetupChoice.UNSET)
+
+    fun setSetupChoice(choice: SetupChoice) = edit { it.putString(KEY_SETUP_CHOICE, choice.name) }
+
+    // ------------------------------------------------------ Project context
+
+    /**
+     * Workspace-relative path of the repository selected in Files; the shared
+     * working context for chat session titles and the terminal cwd (F-001).
+     * Empty means the workspace root.
+     */
+    fun selectedProject(): String? = prefs.getString(KEY_SELECTED_PROJECT, null)?.ifBlank { null }
+
+    fun setSelectedProject(relativePath: String?) = edit {
+        it.putString(KEY_SELECTED_PROJECT, relativePath.orEmpty())
+    }
+
     // -------------------------------------------------------- Appearance
 
     /** Expressive toggle for Material You dynamic color on Android 12+ (M3E audit E-016). */
@@ -211,5 +240,7 @@ class SettingsStore(private val context: Context) {
         private const val KEY_OPENCODE_PIN = "opencode_version_pin"
         private const val KEY_BOOTSTRAP_DONE = "bootstrap_completed"
         private const val KEY_DYNAMIC_COLOR = "dynamic_color"
+        private const val KEY_SETUP_CHOICE = "setup_choice"
+        private const val KEY_SELECTED_PROJECT = "selected_project"
     }
 }

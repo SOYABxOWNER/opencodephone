@@ -45,6 +45,11 @@ class TerminalViewModel(private val graph: AppGraph) : ViewModel() {
             return
         }
         val run = ++generation
+        // Shared project context (functional audit F-001): the shell starts in
+        // the repository selected in Files instead of the workspace root.
+        val project = graph.selectedProject.value
+        val cwd = io.github.oustery.opencodephone.core.linuxenv.PRootCommand.WORKSPACE_MOUNT +
+            if (project.isNullOrBlank()) "" else "/$project"
         shellJob = viewModelScope.launch(Dispatchers.IO) {
             try {
                 val proc = graph.runtime.startInteractive(graph.runtime.process(
@@ -52,7 +57,7 @@ class TerminalViewModel(private val graph: AppGraph) : ViewModel() {
                     // tcsetpgrp() and emits the warnings seen on Android.
                     listOf("/bin/bash", "--noprofile", "--norc", "-s"),
                     env = mapOf("TERM" to "dumb", "PAGER" to "cat", "GIT_PAGER" to "cat"),
-                    cwd = io.github.oustery.opencodephone.core.linuxenv.PRootCommand.WORKSPACE_MOUNT,
+                    cwd = cwd,
                     mergeOutput = true,
                 ))
                 val accepted = synchronized(processGuard) {
@@ -67,6 +72,11 @@ class TerminalViewModel(private val graph: AppGraph) : ViewModel() {
                     return@launch
                 }
                 appendLine("── OpenCodePhone shell (Debian) ──")
+                if (!project.isNullOrBlank()) {
+                    appendLine(
+                        "── ${graph.appContext.getString(io.github.oustery.opencodephone.R.string.terminal_project)}: $project ──",
+                    )
+                }
                 proc.inputStream.bufferedReader().use { reader ->
                     val chunk = CharArray(2048)
                     while (true) {

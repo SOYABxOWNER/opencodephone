@@ -213,6 +213,11 @@ class SettingsViewModel(private val graph: AppGraph) : ViewModel() {
 
     fun showReinstallConfirm(show: Boolean) = _state.update { it.copy(showReinstallConfirm = show) }
 
+    /** Remote-first path (F-022): install the local environment on demand. */
+    fun installLocalEnvironment() {
+        graph.chooseSetup(io.github.oustery.opencodephone.core.settings.SetupChoice.LOCAL)
+    }
+
     fun reinstallEnvironment() {
         _state.update { it.copy(showReinstallConfirm = false) }
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {

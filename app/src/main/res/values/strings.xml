@@ -170,4 +170,16 @@
     <string name="chat_reasoning">Reasoning</string>
     <string name="chat_tool_output">Tool output</string>
     <string name="settings_server_help">How server controls work</string>
+    <string name="bootstrap_choice_title">How do you want to use OpenCode?</string>
+    <string name="bootstrap_choice_local">Install local environment</string>
+    <string name="bootstrap_choice_local_hint">Downloads Debian (~50 MB), the toolset (~65 MB) and the OpenCode CLI (~40 MB) into a private Linux environment on this phone. Required for the built-in Files browser, Terminal and local server.</string>
+    <string name="bootstrap_choice_remote">Connect to a server</string>
+    <string name="bootstrap_choice_remote_hint">Point the app at an existing opencode server (Settings → Server). Nothing is downloaded; chat works once the connection is configured. 32-bit ARM devices support this mode only.</string>
+    <string name="settings_env_install">Set up local environment</string>
+    <string name="settings_env_install_hint">You chose the remote-server path. This installs the local Debian environment when you need the Files browser or Terminal.</string>
+    <string name="editor_discard_title">Discard changes?</string>
+    <string name="editor_discard_body">%1$s has unsaved changes. Closing the editor now will lose them.</string>
+    <string name="editor_discard_confirm">Discard</string>
+    <string name="chat_project_chip">Project: %1$s</string>
+    <string name="terminal_project">project</string>
 </resources>
