@@ -149,16 +149,16 @@ class OpenCodeClientTest {
 
     @Test
     fun `attachment inlining classifier covers text and code files`() {
-        assertTrue(Attachments.isInlineable("text/plain", "notes.txt"))
-        assertTrue(Attachments.isInlineable("application/json", "package.json"))
-        assertTrue(Attachments.isInlineable("", "MainActivity.kt"))
-        assertTrue(Attachments.isInlineable("application/octet-stream", ".gitignore"))
-        assertFalse(Attachments.isInlineable("image/png", "photo.png"))
-        assertFalse(Attachments.isInlineable("application/pdf", "spec.pdf"))
-        assertFalse(Attachments.isInlineable("", "archive.zip"))
+        assertTrue("text mime", Attachments.isInlineable("text/plain", "notes.txt"))
+        assertTrue("json mime", Attachments.isInlineable("application/json", "package.json"))
+        assertTrue("code ext", Attachments.isInlineable("", "MainActivity.kt"))
+        assertTrue("dotfile", Attachments.isInlineable("application/octet-stream", ".gitignore"))
+        assertFalse("png", Attachments.isInlineable("image/png", "photo.png"))
+        assertFalse("pdf", Attachments.isInlineable("application/pdf", "spec.pdf"))
+        assertFalse("zip", Attachments.isInlineable("", "archive.zip"))
         val block = Attachments.inlineBlock("notes.md", "hello")
-        assertTrue(block.startsWith("Attached file \"notes.md\":\n```markdown\n"))
-        assertTrue(block.endsWith("```"))
+        assertTrue("block=[$block]", block.startsWith("Attached file \"notes.md\":\n```markdown\n"))
+        assertTrue("block=[$block]", block.endsWith("```"))
     }
 
     @Test
