@@ -132,6 +132,77 @@ class OpenCodeClientTest {
     }
 
     @Test
+    fun `messages pagination sends limit and before and reads next cursor`() = runBlocking {
+        server.enqueue(
+            MockResponse()
+                .setHeader("X-Next-Cursor", "msg_3")
+                .setBody("""[{"info":{"id":"msg_1","role":"user"},"parts":[]},
+                    {"info":{"id":"msg_2","role":"assistant"},"parts":[]}]"""),
+        )
+        val page = client.listMessages("ses_1", limit = 2)
+        assertEquals(2, page.items.size)
+        assertEquals("msg_3", page.nextCursor)
+        val recorded = server.takeRequest()
+        assertTrue(recorded.path!!.startsWith("/session/ses_1/message?"))
+        assertTrue(recorded.path!!.contains("limit=2"))
+    }
+
+    @Test
+    fun `messages pagination passes encoded before cursor`() = runBlocking {
+        server.enqueue(MockResponse().setBody("[]"))
+        client.listMessages("ses_1", limit = 5, before = "msg 3/id")
+        val recorded = server.takeRequest()
+        assertTrue(recorded.path!!.contains("limit=5"))
+        assertTrue(recorded.path!!.contains("before=msg+3%2Fid"))
+    }
+
+    @Test
+    fun `messages without limit fetches everything and has no cursor`() = runBlocking {
+        server.enqueue(MockResponse().setBody("""[{"info":{"id":"msg_1","role":"user"},"parts":[]}]"""))
+        val page = client.listMessages("ses_1")
+        assertEquals(1, page.items.size)
+        assertEquals(null, page.nextCursor)
+        assertEquals("/session/ses_1/message", server.takeRequest().path)
+    }
+
+    @Test
+    fun `rename session patches title`() = runBlocking {
+        server.enqueue(MockResponse().setBody("""{"id":"ses_1","title":"Renamed"}"""))
+        val session = client.renameSession("ses_1", "Renamed")
+        assertEquals("Renamed", session.title)
+        val recorded = server.takeRequest()
+        assertEquals("PATCH", recorded.method)
+        assertEquals("/session/ses_1", recorded.path)
+        assertTrue(recorded.body.readUtf8().contains("\"title\":\"Renamed\""))
+    }
+
+    @Test
+    fun `session diff parses FileDiff shape`() = runBlocking {
+        server.enqueue(
+            MockResponse().setBody(
+                """[{"file":"src/App.kt","patch":"@@ -1 +1 @@","additions":3,"deletions":1,"status":"modified"},
+                   {"file":"new.txt","additions":5,"deletions":0,"status":"added"}]""",
+            ),
+        )
+        val diff = client.sessionDiff("ses_1")
+        assertEquals(2, diff.size)
+        assertEquals("src/App.kt", diff[0].file)
+        assertEquals("@@ -1 +1 @@", diff[0].patch)
+        assertEquals(3L, diff[0].additions)
+        assertEquals(1L, diff[0].deletions)
+        assertEquals("modified", diff[0].status)
+        assertEquals("added", diff[1].status)
+        assertEquals(null, diff[1].patch)
+    }
+
+    @Test
+    fun `sessions limit is passed as a query parameter`() = runBlocking {
+        server.enqueue(MockResponse().setBody("[]"))
+        client.listSessions(limit = 100)
+        assertEquals("/session?limit=100", server.takeRequest().path)
+    }
+
+    @Test
     fun `basic auth header is attached when password configured`() = runBlocking {
         client.config = client.config.copy(username = "opencode", password = "secret")
         server.enqueue(MockResponse().setBody("""{"healthy":true,"version":"1.19.5"}"""))

@@ -33,9 +33,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,6 +52,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -74,6 +79,8 @@ import io.github.oustery.opencodephone.core.designsystem.OcSkeletonRows
 import io.github.oustery.opencodephone.core.designsystem.OcStatusChip
 import io.github.oustery.opencodephone.core.model.ModelEntry
 import io.github.oustery.opencodephone.core.model.ProviderEntry
+import io.github.oustery.opencodephone.core.model.Session
+import io.github.oustery.opencodephone.core.model.SessionFileDiff
 import io.github.oustery.opencodephone.core.model.UiPart
 import io.github.oustery.opencodephone.ui.common.VmFactory
 import java.net.URLDecoder
@@ -96,6 +103,12 @@ fun ChatScreen(graph: AppGraph, onOpenSettings: () -> Unit) {
                     onClick = { vm.showModels(true) },
                     modifier = Modifier.weight(1f),
                 )
+                IconButton(onClick = { vm.showDiff(true) }, enabled = state.connection == ChatConnection.CONNECTED) {
+                    Icon(
+                        painterResource(R.drawable.ic_diff),
+                        contentDescription = stringResource(R.string.chat_diff_title),
+                    )
+                }
                 IconButton(onClick = { vm.showSessions(true) }) {
                     Icon(
                         painterResource(R.drawable.ic_sessions),
@@ -141,6 +154,11 @@ fun ChatScreen(graph: AppGraph, onOpenSettings: () -> Unit) {
         if (state.showModels) {
             OcExpressiveSheet(onDismissRequest = { vm.showModels(false) }) {
                 ModelsSheet(vm, state)
+            }
+        }
+        if (state.showDiff) {
+            OcExpressiveSheet(onDismissRequest = { vm.showDiff(false) }) {
+                DiffSheet(vm, state)
             }
         }
     }
@@ -199,6 +217,23 @@ private fun ChatTimeline(vm: ChatViewModel, state: ChatUiState) {
             }
             items(state.messages, key = { it.id }) { message ->
                 MessageBubble(message, onCopy = { text -> clipboard.setText(AnnotatedString(text)) })
+            }
+            // Older history is one tap away instead of being loaded wholesale
+            // (functional audit F-011).
+            if (state.earlierCursor != null) {
+                item(key = "load-earlier") {
+                    TextButton(
+                        onClick = { vm.loadEarlier() },
+                        enabled = !state.loadingEarlier,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            stringResource(
+                                if (state.loadingEarlier) R.string.chat_loading_earlier else R.string.chat_load_earlier,
+                            ),
+                        )
+                    }
+                }
             }
         }
 
@@ -575,8 +610,20 @@ private fun SessionsSheet(vm: ChatViewModel, state: ChatUiState) {
     // Hoisted: LocalHapticFeedback.current is a composable call and must not
     // run inside the row click lambda (M3E audit E-010).
     val haptics = LocalHapticFeedback.current
+    // Session management actions (functional audit F-004).
+    var pendingDelete by remember { mutableStateOf<Session?>(null) }
+    var renaming by remember { mutableStateOf<Session?>(null) }
     Column(modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp).padding(horizontal = 20.dp, vertical = 12.dp)) {
         Text(stringResource(R.string.chat_sessions), style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.size(8.dp))
+        OutlinedTextField(
+            value = state.sessionQuery,
+            onValueChange = { vm.updateSessionQuery(it) },
+            placeholder = { Text(stringResource(R.string.chat_sessions_search)) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.small,
+        )
         Spacer(Modifier.size(8.dp))
         if (state.sessionsLoading) {
             // First fetch in flight — placeholder rows instead of a false
@@ -595,8 +642,12 @@ private fun SessionsSheet(vm: ChatViewModel, state: ChatUiState) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        val query = state.sessionQuery.trim()
+        val visible = if (query.isEmpty()) state.sessions else state.sessions.filter {
+            it.title.contains(query, ignoreCase = true)
+        }
         LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
-          items(state.sessions, key = { it.id }) { session ->
+          items(visible, key = { it.id }) { session ->
             Surface(
                 shape = MaterialTheme.shapes.small,
                 color = if (session.id == state.activeSessionId) {
@@ -610,19 +661,201 @@ private fun SessionsSheet(vm: ChatViewModel, state: ChatUiState) {
                     vm.selectSession(session.id)
                 },
             ) {
-                Text(
-                    text = session.title.ifBlank { stringResource(R.string.chat_session_untitled) },
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(14.dp),
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = session.title.ifBlank { stringResource(R.string.chat_session_untitled) },
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.weight(1f).padding(start = 14.dp, top = 14.dp, bottom = 14.dp),
+                    )
+                    IconButton(onClick = { renaming = session }, modifier = Modifier.size(40.dp)) {
+                        Icon(
+                            painterResource(R.drawable.ic_edit),
+                            contentDescription = stringResource(R.string.chat_session_rename),
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    IconButton(onClick = { pendingDelete = session }, modifier = Modifier.size(40.dp)) {
+                        Icon(
+                            painterResource(R.drawable.ic_delete),
+                            contentDescription = stringResource(R.string.action_delete),
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
         }
+        }
+        if (query.isNotEmpty() && visible.isEmpty() && state.sessions.isNotEmpty()) {
+            Text(
+                stringResource(R.string.chat_sessions_no_match),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (state.sessions.size >= CHAT_SESSIONS_LIMIT) {
+            Text(
+                stringResource(R.string.chat_sessions_limit, CHAT_SESSIONS_LIMIT),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
         Spacer(Modifier.size(8.dp))
         androidx.compose.material3.Button(onClick = { vm.newSession() }, modifier = Modifier.fillMaxWidth()) {
             Text(stringResource(R.string.chat_new_session))
         }
         Spacer(Modifier.size(24.dp))
+    }
+    pendingDelete?.let { session ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text(stringResource(R.string.chat_session_delete_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.chat_session_delete_body,
+                        session.title.ifBlank { stringResource(R.string.chat_session_untitled) },
+                    ),
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.deleteSession(session.id)
+                    pendingDelete = null
+                }) { Text(stringResource(R.string.action_delete)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) { Text(stringResource(R.string.action_cancel)) }
+            },
+        )
+    }
+    renaming?.let { session ->
+        RenameSessionDialog(
+            initial = session.title,
+            onSave = {
+                vm.renameSession(session.id, it)
+                renaming = null
+            },
+            onDismiss = { renaming = null },
+        )
+    }
+}
+
+@Composable
+private fun RenameSessionDialog(initial: String, onSave: (String) -> Unit, onDismiss: () -> Unit) {
+    var title by remember { mutableStateOf(initial) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.chat_session_rename)) },
+        text = {
+            OutlinedTextField(
+                value = title,
+                onValueChange = { title = it },
+                placeholder = { Text(stringResource(R.string.chat_session_rename_hint)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.small,
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(title) }, enabled = title.isNotBlank()) {
+                Text(stringResource(R.string.action_save))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+        },
+    )
+}
+
+/** Per-session change review backed by `GET /session/:id/diff` (F-005). */
+@Composable
+private fun DiffSheet(vm: ChatViewModel, state: ChatUiState) {
+    Column(modifier = Modifier.fillMaxWidth().heightIn(max = 620.dp).padding(horizontal = 20.dp, vertical = 12.dp)) {
+        Text(stringResource(R.string.chat_diff_title), style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.size(4.dp))
+        if (state.diffLoading) {
+            Spacer(Modifier.size(8.dp))
+            OcSkeletonRows(rows = 4)
+        } else if (state.diff.isEmpty()) {
+            Spacer(Modifier.size(8.dp))
+            Text(
+                stringResource(R.string.chat_diff_empty),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            Text(
+                stringResource(R.string.chat_diff_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.size(8.dp))
+            LazyColumn(modifier = Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(state.diff, key = { "${it.file}:${it.additions}:${it.deletions}" }) { entry ->
+                    DiffFileRow(entry)
+                }
+            }
+        }
+        Spacer(Modifier.size(24.dp))
+    }
+}
+
+@Composable
+private fun DiffFileRow(entry: SessionFileDiff) {
+    Surface(
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = entry.file.substringAfterLast('/').ifEmpty { entry.file },
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                entry.status?.let { status ->
+                    val tone = when (status) {
+                        "added" -> OcChipTone.PRIMARY
+                        "deleted" -> OcChipTone.ERROR
+                        "modified" -> OcChipTone.TERTIARY
+                        else -> OcChipTone.NEUTRAL
+                    }
+                    OcStatusChip(text = status, tone = tone)
+                }
+                Text(
+                    text = "+${entry.additions}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    text = "-${entry.deletions}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            val patch = entry.patch
+            if (!patch.isNullOrBlank()) {
+                OcDisclosure(
+                    title = stringResource(R.string.chat_diff_patch),
+                    expandedDescription = stringResource(R.string.state_expanded),
+                    collapsedDescription = stringResource(R.string.state_collapsed),
+                ) {
+                    SelectionContainer {
+                        Text(
+                            patch,
+                            style = io.github.oustery.opencodephone.core.designsystem.CodeTypography.output,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
