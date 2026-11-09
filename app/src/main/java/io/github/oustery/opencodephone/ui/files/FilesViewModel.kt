@@ -13,11 +13,17 @@ import java.io.File
 import java.util.concurrent.atomic.AtomicLong
 
  data class FileEntry(val file: File, val name: String, val isDir: Boolean, val depth: Int)
+
+/** One entry of `git status --porcelain -z` (staged+unstaged combined). */
+ data class GitChange(val status: String, val path: String)
+
  data class FilesUiState(
     val entries: List<FileEntry> = emptyList(), val expanded: Set<String> = emptySet(),
     val workspaceEmpty: Boolean = false, val gitBranch: String? = null, val gitChanges: Int = 0,
+    val changeList: List<GitChange> = emptyList(),
     val gitProject: String? = null, val editing: EditingFile? = null,
     val showCloneDialog: Boolean = false, val showNewFileDialog: Boolean = false,
+    val showCommitDialog: Boolean = false,
     val busy: String? = null, val message: String? = null,
 )
  data class EditingFile(val snapshot: WorkspaceFiles.Snapshot, val content: String) {
@@ -182,6 +188,7 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
     }
     fun showClone(show: Boolean) = _state.update { it.copy(showCloneDialog = show) }
     fun showNewFile(show: Boolean) = _state.update { it.copy(showNewFileDialog = show) }
+    fun showCommit(show: Boolean) = _state.update { it.copy(showCommitDialog = show) }
     fun createFile(name: String) { _state.update { it.copy(showNewFileDialog = false) }; task { files.create(name); refresh() } }
 
     private fun cwd(repo: File): String {
@@ -195,10 +202,27 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
     private suspend fun migrate(repo: File) = GitAuth.migrateRemotes { exec(repo, it) }
     private suspend fun refreshGit() {
         val repo = project ?: return
-        val result = exec(repo, listOf("git", "status", "--porcelain", "-b"))
+        // -z keeps paths unquoted and NUL-separated, so spaces and exotic
+        // characters survive the round-trip (F-008).
+        val result = exec(repo, listOf("git", "status", "--porcelain", "-z", "-b"))
         check(result.exitCode == 0) { "Git status failed" }
-        val lines = result.output.lines()
-        _state.update { it.copy(gitProject = repo.name, gitBranch = lines.firstOrNull()?.removePrefix("## "), gitChanges = lines.drop(1).count { line -> line.isNotBlank() }) }
+        val entries = result.output.split('\u0000').filter { it.isNotBlank() }
+        val branch = entries.firstOrNull()?.takeIf { it.startsWith("## ") }?.removePrefix("## ")
+        val changes = entries
+            .drop(if (branch != null) 1 else 0)
+            .map { entry ->
+                var path = entry.drop(3)
+                // Rename entries read "XY old -> new"; staging the new path
+                // records the rename.
+                if (path.contains(" -> ")) path = path.substringAfter(" -> ")
+                GitChange(status = entry.take(2).trim(), path = path)
+            }
+        _state.update {
+            it.copy(
+                gitProject = repo.name, gitBranch = branch,
+                changeList = changes, gitChanges = changes.size,
+            )
+        }
     }
 
     fun cloneRepository(url: String) {
@@ -219,17 +243,66 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
             refresh()
         }
     }
-    fun commit(message: String) {
+    fun commit(message: String, selectedPaths: Set<String> = emptySet()) {
         if (message.isBlank()) return
+        _state.update { it.copy(showCommitDialog = false) }
         task("Committing…") { gitLock.withLock {
             val repo = checkNotNull(project) { "Select a repository directory" }
             migrate(repo)
-            check(exec(repo, listOf("git", "add", "-A")).exitCode == 0) { "Git add failed" }
+            // Stage only what the user picked instead of a blind `git add -A`
+            // (functional audit F-008).
+            require(selectedPaths.isNotEmpty()) { "Select at least one changed file" }
+            check(exec(repo, listOf("git", "add", "--") + selectedPaths.toList()).exitCode == 0) { "Git add failed" }
             val identity = graph.settings.gitConfig()
             val args = listOf("-c", "user.name=${identity.userName}", "-c", "user.email=${identity.userEmail}", "commit", "-m", message)
             check(exec(repo, GitAuth.command(*args.toTypedArray())).exitCode == 0) { "Commit failed" }
             refreshGit()
         } }
+    }
+
+    /** Delete a workspace file or directory tree (F-007). */
+    fun deleteEntry(entry: FileEntry) {
+        val absolute = entry.file.absolutePath
+        task {
+            files.delete(entry.file)
+            // Editor buffers and drafts pointing into the deleted subtree
+            // must not survive it.
+            drafts.readEditor()?.let { d ->
+                if (d.path == absolute || d.path.startsWith("$absolute/")) drafts.clearEditor()
+            }
+            _state.update { st -> st.copy(
+                editing = st.editing?.takeIf { e ->
+                    val p = e.file.absolutePath
+                    p != absolute && !p.startsWith("$absolute/")
+                },
+                expanded = st.expanded.filterNot { it == absolute || it.startsWith("$absolute/") }.toSet(),
+            ) }
+            if (project?.let { it.absolutePath == absolute || it.absolutePath.startsWith("$absolute/") } == true) {
+                project = null
+                publishProject(null)
+            }
+            refresh()
+        }
+    }
+
+    /** Rename a workspace file or directory within its parent (F-007). */
+    fun renameEntry(entry: FileEntry, newName: String) {
+        val oldPath = entry.file.absolutePath
+        task {
+            val dest = files.rename(entry.file, newName)
+            val newPath = dest.absolutePath
+            // The old editor snapshot (hash) is tied to the old path.
+            drafts.readEditor()?.let { d -> if (d.path == oldPath) drafts.clearEditor() }
+            _state.update { st -> st.copy(
+                editing = st.editing?.takeIf { it.file.absolutePath != oldPath },
+                expanded = st.expanded.map { if (it == oldPath) newPath else it }.toSet(),
+            ) }
+            if (project?.absolutePath == oldPath) {
+                project = dest
+                publishProject(dest)
+            }
+            refresh()
+        }
     }
     fun push() {
         task("Pushing…") { gitLock.withLock {
