@@ -136,6 +136,16 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                 }
             }
         }
+        // Attachment copies are kept after sending so the agent can revisit
+        // them; week-old leftovers are swept instead of growing forever
+        // (uploads orphan cleanup, functional audit F-003).
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val uploads = java.io.File(graph.layout.workspaceDir, "uploads")
+            val cutoff = System.currentTimeMillis() - 7L * 24 * 60 * 60 * 1000
+            uploads.listFiles()?.forEach { file ->
+                if (file.isFile && file.lastModified() < cutoff) file.delete()
+            }
+        }
         // Shared project context follows the Files selection (F-001).
         viewModelScope.launch {
             graph.selectedProject.collect { project ->
@@ -456,6 +466,18 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                 val attachment = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                     copyToWorkspace(context, uri)
                 }
+                // Remote servers cannot read phone files (F-002): refuse what
+                // cannot be delivered instead of failing inside the agent run.
+                val remote = graph.serverConfiguration.value.mode == ServerMode.REMOTE
+                if (remote && (!io.github.oustery.opencodephone.core.opencode.Attachments.isInlineable(attachment.mime, attachment.displayName) ||
+                        attachment.size > io.github.oustery.opencodephone.core.opencode.Attachments.INLINE_LIMIT_BYTES)) {
+                    java.io.File(attachment.absolutePath).delete()
+                    val limitKb = io.github.oustery.opencodephone.core.opencode.Attachments.INLINE_LIMIT_BYTES / 1024
+                    _state.update {
+                        it.copy(error = context.getString(io.github.oustery.opencodephone.R.string.chat_attach_remote_unsupported, limitKb))
+                    }
+                    return@launch
+                }
                 _state.update { it.copy(attachments = it.attachments + attachment) }
                 persistChatDraft()
             } catch (e: CancellationException) {
@@ -676,6 +698,23 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
         }
         val sentDraft = text
         val sentAttachments = current.attachments
+        // Remote delivery (functional audit F-002): the server cannot resolve
+        // app-side file:// paths, so text-like attachments ride along as
+        // inline prompt text and binaries are refused before sending.
+        val remote = graph.serverConfiguration.value.mode == ServerMode.REMOTE
+        if (remote) {
+            val undeliverable = sentAttachments.filter {
+                !io.github.oustery.opencodephone.core.opencode.Attachments.isInlineable(it.mime, it.displayName) ||
+                    it.size > io.github.oustery.opencodephone.core.opencode.Attachments.INLINE_LIMIT_BYTES
+            }
+            if (undeliverable.isNotEmpty()) {
+                val limitKb = io.github.oustery.opencodephone.core.opencode.Attachments.INLINE_LIMIT_BYTES / 1024
+                _state.update {
+                    it.copy(error = graph.appContext.getString(io.github.oustery.opencodephone.R.string.chat_attach_remote_unsupported, limitKb))
+                }
+                return
+            }
+        }
         _state.update { it.copy(draft = "", attachments = emptyList(), busy = true) }
         persistChatDraft()
         val client = activeClient
@@ -683,19 +722,34 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
         viewModelScope.launch {
             try {
                 val selection = current.modelSelection
+                val inlineText = if (remote && sentAttachments.isNotEmpty()) {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        sentAttachments.mapNotNull { file ->
+                            runCatching {
+                                io.github.oustery.opencodephone.core.opencode.Attachments.inlineBlock(
+                                    file.displayName,
+                                    java.io.File(file.absolutePath).readText(),
+                                )
+                            }.getOrNull()
+                        }.joinToString("\n\n").ifBlank { null }
+                    }
+                } else {
+                    null
+                }
                 client.promptAsync(
                     sessionId = sessionId,
                     text = sentDraft,
                     providerId = selection?.providerId,
                     modelId = selection?.modelId,
                     agent = null,
-                    attachments = sentAttachments.map { file ->
+                    attachments = if (remote) emptyList() else sentAttachments.map { file ->
                         io.github.oustery.opencodephone.core.opencode.PromptAttachment(
                             path = file.envPath,
                             mime = file.mime,
                             filename = file.displayName,
                         )
                     },
+                    inlineText = inlineText,
                 )
             } catch (e: CancellationException) {
                 throw e

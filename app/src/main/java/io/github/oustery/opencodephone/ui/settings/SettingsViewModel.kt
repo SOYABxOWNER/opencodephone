@@ -33,6 +33,8 @@ data class SettingsUiState(
     val showAddProvider: Boolean = false,
     val showReinstallConfirm: Boolean = false,
     val dynamicColor: Boolean = false,
+    val showImportConfirm: Boolean = false,
+    val dataMessage: String? = null,
 )
 
 class SettingsViewModel(private val graph: AppGraph) : ViewModel() {
@@ -230,4 +232,116 @@ class SettingsViewModel(private val graph: AppGraph) : ViewModel() {
     }
 
     fun workspacePath(): String = graph.layout.workspaceDir.absolutePath
+
+    // ------------------------------------------------ Backup & data (F-013)
+
+    private var pendingImport: org.json.JSONObject? = null
+
+    /** Write the non-secret snapshot to a user-chosen SAF destination. */
+    fun exportSettings(uri: android.net.Uri) {
+        val context = graph.appContext
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val json = settings.exportNonSecret()
+                val output = context.contentResolver.openOutputStream(uri, "wt")
+                    ?: throw IllegalStateException(context.getString(io.github.oustery.opencodephone.R.string.settings_backup_open_failed))
+                output.use { it.write(json.toString(2).toByteArray(Charsets.UTF_8)) }
+                _state.update {
+                    it.copy(dataMessage = context.getString(io.github.oustery.opencodephone.R.string.settings_backup_done))
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update { it.copy(dataMessage = "Export failed: ${e.message?.take(200)}") }
+            }
+        }
+    }
+
+    /** Read a user-picked snapshot and ask for confirmation before applying. */
+    fun onImportPicked(uri: android.net.Uri) {
+        val context = graph.appContext
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val text = context.contentResolver.openInputStream(uri)?.use {
+                    it.readBytes().toString(Charsets.UTF_8)
+                } ?: throw IllegalStateException(context.getString(io.github.oustery.opencodephone.R.string.settings_backup_open_failed))
+                pendingImport = org.json.JSONObject(text)
+                _state.update { it.copy(showImportConfirm = true) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update { it.copy(dataMessage = "Import failed: ${e.message?.take(200)}") }
+            }
+        }
+    }
+
+    fun dismissImportConfirm() {
+        pendingImport = null
+        _state.update { it.copy(showImportConfirm = false) }
+    }
+
+    fun confirmImport() {
+        val json = pendingImport
+        pendingImport = null
+        _state.update { it.copy(showImportConfirm = false) }
+        if (json == null) return
+        val context = graph.appContext
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val applied = settings.importNonSecret(json)
+                graph.refreshClient()
+                graph.credentialsChanged()
+                // Route the graph state so the imported choice/project take
+                // effect immediately (bootstrap may need to run).
+                val importedChoice = settings.setupChoice()
+                if (importedChoice != graph.setupChoice.value) graph.chooseSetup(importedChoice)
+                graph.selectProject(settings.selectedProject())
+                reload()
+                _state.update {
+                    it.copy(dataMessage = context.getString(io.github.oustery.opencodephone.R.string.settings_import_done, applied))
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update { it.copy(dataMessage = "Import failed: ${e.message?.take(200)}") }
+            }
+        }
+    }
+
+    /** Clear the crash-recovery draft copies (composer + editor buffer). */
+    fun clearDrafts() {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val store = io.github.oustery.opencodephone.core.settings.DraftStore(
+                java.io.File(graph.appContext.filesDir, "drafts"),
+            )
+            store.clearChat()
+            store.clearEditor()
+            publishDataCleared(io.github.oustery.opencodephone.R.string.settings_data_item_drafts)
+        }
+    }
+
+    /** Delete the app-managed attachment copies under workspace/uploads. */
+    fun clearUploads() {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val uploads = java.io.File(graph.layout.workspaceDir, "uploads")
+            uploads.listFiles()?.forEach { it.deleteRecursively() }
+            publishDataCleared(io.github.oustery.opencodephone.R.string.settings_data_item_uploads)
+        }
+    }
+
+    /** Remove installer leftovers (downloaded archives, temp files). */
+    fun clearInstallerCache() {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            graph.layout.downloadsDir.listFiles()?.forEach { it.deleteRecursively() }
+            graph.layout.tmpDir.listFiles()?.forEach { it.deleteRecursively() }
+            publishDataCleared(io.github.oustery.opencodephone.R.string.settings_data_item_cache)
+        }
+    }
+
+    private fun publishDataCleared(itemRes: Int) {
+        val context = graph.appContext
+        _state.update {
+            it.copy(dataMessage = context.getString(io.github.oustery.opencodephone.R.string.settings_data_done, context.getString(itemRes)))
+        }
+    }
 }

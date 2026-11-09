@@ -7,6 +7,7 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -129,6 +130,35 @@ class OpenCodeClientTest {
         )
         assertTrue(text.contains("\"type\":\"file\""))
         assertTrue(!text.contains("\"type\":\"text\""))
+    }
+
+    @Test
+    fun `inline text rides along as a second text part for remote delivery`() {
+        val body = promptBody(
+            "check this",
+            providerId = null, modelId = null, agent = null,
+            attachments = emptyList(),
+            inlineText = "Attached file \"notes.md\":\n```markdown\nhello\n```",
+        )
+        val text = kotlinx.serialization.json.Json.encodeToString(
+            kotlinx.serialization.json.JsonObject.serializer(), body,
+        )
+        assertTrue(text.contains("\"text\":\"check this\""))
+        assertTrue(text.contains("Attached file \\\"notes.md\\\""))
+    }
+
+    @Test
+    fun `attachment inlining classifier covers text and code files`() {
+        assertTrue(Attachments.isInlineable("text/plain", "notes.txt"))
+        assertTrue(Attachments.isInlineable("application/json", "package.json"))
+        assertTrue(Attachments.isInlineable("", "MainActivity.kt"))
+        assertTrue(Attachments.isInlineable("application/octet-stream", ".gitignore"))
+        assertFalse(Attachments.isInlineable("image/png", "photo.png"))
+        assertFalse(Attachments.isInlineable("application/pdf", "spec.pdf"))
+        assertFalse(Attachments.isInlineable("", "archive.zip"))
+        val block = Attachments.inlineBlock("notes.md", "hello")
+        assertTrue(block.startsWith("Attached file \"notes.md\":\n```markdown\n"))
+        assertTrue(block.endsWith("```"))
     }
 
     @Test

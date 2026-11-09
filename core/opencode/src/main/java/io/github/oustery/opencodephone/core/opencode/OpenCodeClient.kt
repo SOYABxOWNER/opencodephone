@@ -349,8 +349,13 @@ class OpenCodeClient(
         modelId: String? = null,
         agent: String? = null,
         attachments: List<PromptAttachment> = emptyList(),
+        inlineText: String? = null,
     ) {
-        execute("POST", "/session/${q(sessionId)}/prompt_async", promptBody(text, providerId, modelId, agent, attachments))
+        execute(
+            "POST",
+            "/session/${q(sessionId)}/prompt_async",
+            promptBody(text, providerId, modelId, agent, attachments, inlineText),
+        )
     }
 
     suspend fun abort(sessionId: String) {
