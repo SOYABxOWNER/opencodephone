@@ -31,6 +31,16 @@ private val LightSurfaceVariant = Color(0xFFDBE4E1)
 private val LightOnSurfaceVariant = Color(0xFF3F4946)
 private val LightOutline = Color(0xFF6F7976)
 private val LightOutlineVariant = Color(0xFFBFC9C6)
+
+// Derived roles (M3 tonal ladder). Without these, unset ColorScheme slots
+// fall back to the baseline (neutral-purple) palette and sheet scrims /
+// inverse surfaces render off-brand — see M3E audit E-001.
+private val LightSurfaceDim = Color(0xFFD5E0DC)
+private val LightSurfaceBright = Color(0xFFFBFEFD)
+private val LightInverseSurface = Color(0xFF2A3431)
+private val LightInverseOnSurface = Color(0xFFECF4F1)
+private val LightInversePrimary = Color(0xFF80D5C8)
+
 private val LightSurfaceContainerLowest = Color(0xFFFFFFFF)
 private val LightSurfaceContainerLow = Color(0xFFEEF5F2)
 private val LightSurfaceContainer = Color(0xFFE8EFEC)
@@ -60,6 +70,14 @@ private val DarkSurfaceVariant = Color(0xFF3F4946)
 private val DarkOnSurfaceVariant = Color(0xFFBFC9C5)
 private val DarkOutline = Color(0xFF89938F)
 private val DarkOutlineVariant = Color(0xFF3F4946)
+
+// Derived roles — see the light-scheme comment above (M3E audit E-001).
+private val DarkSurfaceDim = Color(0xFF0B1311)
+private val DarkSurfaceBright = Color(0xFF3A4441)
+private val DarkInverseSurface = Color(0xFFDCE4E1)
+private val DarkInverseOnSurface = Color(0xFF151D1B)
+private val DarkInversePrimary = Color(0xFF00695E)
+
 private val DarkSurfaceContainerLowest = Color(0xFF08100E)
 private val DarkSurfaceContainerLow = Color(0xFF151D1B)
 private val DarkSurfaceContainer = Color(0xFF192220)
@@ -91,6 +109,12 @@ val LightColorScheme = lightColorScheme(
     onSurfaceVariant = LightOnSurfaceVariant,
     outline = LightOutline,
     outlineVariant = LightOutlineVariant,
+    surfaceDim = LightSurfaceDim,
+    surfaceBright = LightSurfaceBright,
+    surfaceTint = LightPrimary,
+    inverseSurface = LightInverseSurface,
+    inverseOnSurface = LightInverseOnSurface,
+    inversePrimary = LightInversePrimary,
     surfaceContainerLowest = LightSurfaceContainerLowest,
     surfaceContainerLow = LightSurfaceContainerLow,
     surfaceContainer = LightSurfaceContainer,
@@ -123,6 +147,12 @@ val DarkColorScheme = darkColorScheme(
     onSurfaceVariant = DarkOnSurfaceVariant,
     outline = DarkOutline,
     outlineVariant = DarkOutlineVariant,
+    surfaceDim = DarkSurfaceDim,
+    surfaceBright = DarkSurfaceBright,
+    surfaceTint = DarkPrimary,
+    inverseSurface = DarkInverseSurface,
+    inverseOnSurface = DarkInverseOnSurface,
+    inversePrimary = DarkInversePrimary,
     surfaceContainerLowest = DarkSurfaceContainerLowest,
     surfaceContainerLow = DarkSurfaceContainerLow,
     surfaceContainer = DarkSurfaceContainer,

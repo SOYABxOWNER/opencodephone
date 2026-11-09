@@ -30,7 +30,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledIconButton
@@ -338,7 +337,7 @@ private fun AttachmentChip(file: PendingAttachment, onRemove: () -> Unit) {
                 Text(
                     formatAttachmentSize(file.size),
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f),
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
                 )
             }
             IconButton(onClick = onRemove, modifier = Modifier.size(32.dp)) {
