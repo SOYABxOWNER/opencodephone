@@ -149,7 +149,12 @@ class SettingsViewModel(private val graph: AppGraph) : ViewModel() {
     }
     fun setMode(mode: ServerMode) = updateServer { it.copy(mode = mode) }
     fun setHost(value: String) = updateServer { it.copy(host = value.trim()) }
-    fun setPort(value: String) = _state.update { it.copy(serverDirty = true, serverPortText = value, providerSyncAllowed = false) }
+    // Digits only, capped at a 5-char port (65535) — the digits IME is a
+    // soft suggestion, hardware keyboards and paste still need the filter
+    // (UI audit A5).
+    fun setPort(value: String) = _state.update {
+        it.copy(serverDirty = true, serverPortText = value.filter { c -> c.isDigit() }.take(5), providerSyncAllowed = false)
+    }
     fun setUsername(value: String) = updateServer { it.copy(username = value.trim()) }
     fun setPassword(value: String) = updateServer { it.copy(password = value) }
     fun setProviderSyncAllowed(value: Boolean) = _state.update { it.copy(serverDirty = true, providerSyncAllowed = value) }

@@ -104,9 +104,17 @@ fun TerminalScreen(graph: AppGraph) {
                     }
                 }
             }
+            // Follow the stream only when the reader is already at the bottom
+            // and not scrolling (UI audit A3) — the unconditional jump made the
+            // log impossible to inspect while a command was still producing
+            // output. Mirrors the chat timeline behaviour.
             LaunchedEffect(state.output.size) {
-                if (state.output.isNotEmpty()) {
-                    listState.animateScrollToItem(state.output.size - 1)
+                if (state.output.isEmpty()) return@LaunchedEffect
+                val info = listState.layoutInfo
+                val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+                val atBottom = lastVisible >= info.totalItemsCount - 2
+                if (atBottom && !listState.isScrollInProgress) {
+                    listState.scrollToItem(state.output.size - 1)
                 }
             }
 

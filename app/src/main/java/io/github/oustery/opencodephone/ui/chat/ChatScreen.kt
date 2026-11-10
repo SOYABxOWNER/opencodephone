@@ -528,7 +528,10 @@ private fun AttachmentChip(file: PendingAttachment, onRemove: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                 )
             }
-            IconButton(onClick = onRemove, modifier = Modifier.size(32.dp)) {
+            // No size() override on the button: the 16dp icon keeps the row
+            // compact while the standard control bounds restore a 48dp touch
+            // target (UI audit A1).
+            IconButton(onClick = onRemove) {
                 Icon(
                     painterResource(R.drawable.ic_close),
                     contentDescription = stringResource(R.string.chat_attachment_remove),
@@ -597,9 +600,10 @@ private fun PartView(part: UiPart, onCopy: (String) -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End,
             ) {
+                // Full touch target again (UI audit A1); compactness lives in
+                // the 15dp icon, not in a shrunk button.
                 androidx.compose.material3.IconButton(
                     onClick = { onCopy(part.text) },
-                    modifier = Modifier.size(28.dp),
                 ) {
                     Icon(
                         painterResource(R.drawable.ic_copy),
@@ -800,7 +804,9 @@ private fun SessionsSheet(vm: ChatViewModel, state: ChatUiState) {
                         style = MaterialTheme.typography.bodyLarge,
                         modifier = Modifier.weight(1f).padding(start = 14.dp, top = 14.dp, bottom = 14.dp),
                     )
-                    IconButton(onClick = { renaming = session }, modifier = Modifier.size(40.dp)) {
+                    // size() overrides never shrink the icon below what the row
+                    // needs, they only shrink the touch target (UI audit A1).
+                    IconButton(onClick = { renaming = session }) {
                         Icon(
                             painterResource(R.drawable.ic_edit),
                             contentDescription = stringResource(R.string.chat_session_rename),
@@ -808,7 +814,7 @@ private fun SessionsSheet(vm: ChatViewModel, state: ChatUiState) {
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    IconButton(onClick = { pendingDelete = session }, modifier = Modifier.size(40.dp)) {
+                    IconButton(onClick = { pendingDelete = session }) {
                         Icon(
                             painterResource(R.drawable.ic_delete),
                             contentDescription = stringResource(R.string.action_delete),

@@ -12,6 +12,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.Density
@@ -82,6 +83,48 @@ class ComponentRenderTest {
         }
         compose.onNodeWithText("Settings").assertIsDisplayed().performClick()
         compose.runOnIdle { assertEquals(1, clicks) }
+    }
+
+    @Test fun toggleableRowTogglesFromTheWholeLabel() {
+        var toggles = 0
+        compose.setContent {
+            OpenCodePhoneTheme {
+                Column(Modifier.width(320.dp)) {
+                    var consent by remember { mutableStateOf(false) }
+                    OcToggleableRow(
+                        checked = consent,
+                        onCheckedChange = { toggles++; consent = it },
+                        role = Role.Checkbox,
+                    ) {
+                        Checkbox(checked = consent, onCheckedChange = null)
+                        Text("Sync provider keys")
+                    }
+                    var dynamic by remember { mutableStateOf(true) }
+                    OcToggleableRow(
+                        checked = dynamic,
+                        onCheckedChange = { toggles += 10; dynamic = it },
+                        role = Role.Switch,
+                        modifier = Modifier.testTag("switch-row"),
+                    ) {
+                        Text("Dynamic color")
+                        Switch(checked = dynamic, onCheckedChange = null)
+                    }
+                }
+            }
+        }
+        // Tapping the label — not only the control — must toggle, and the row
+        // must expose the control's role and toggleable state so TalkBack
+        // announces the right behaviour (UI audit A4).
+        compose.onNodeWithText("Sync provider keys")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Checkbox))
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.ToggleableState, ToggleableState.Off))
+            .performClick()
+        compose.onNodeWithText("Sync provider keys")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.ToggleableState, ToggleableState.On))
+        compose.onNodeWithTag("switch-row")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Switch))
+            .performClick()
+        compose.runOnIdle { assertEquals(11, toggles) }
     }
 
     @Test fun shapeEmblemRendersExpressiveContainer() {

@@ -72,6 +72,7 @@ import io.github.oustery.opencodephone.core.designsystem.OcChipTone
 import io.github.oustery.opencodephone.core.designsystem.OcEmptyState
 import io.github.oustery.opencodephone.core.designsystem.OcSkeletonRows
 import io.github.oustery.opencodephone.core.designsystem.OcStatusChip
+import io.github.oustery.opencodephone.core.designsystem.OcToggleableRow
 import io.github.oustery.opencodephone.ui.common.VmFactory
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
@@ -453,15 +454,19 @@ private fun CommitDialog(
                 )
                 LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 300.dp)) {
                     items(changes, key = { "${it.status}:${it.path}" }) { change ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
+                        // Whole row toggles, label included (UI audit A4);
+                        // the checkbox itself is inert.
+                        OcToggleableRow(
+                            checked = change.path in selected,
+                            onCheckedChange = { on ->
+                                selected = if (on) selected + change.path else selected - change.path
+                            },
+                            role = Role.Checkbox,
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             Checkbox(
                                 checked = change.path in selected,
-                                onCheckedChange = { on ->
-                                    selected = if (on) selected + change.path else selected - change.path
-                                },
+                                onCheckedChange = null,
                             )
                             Text(
                                 change.status,

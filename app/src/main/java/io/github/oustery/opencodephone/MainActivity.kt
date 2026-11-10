@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.ui.Alignment
@@ -86,9 +87,20 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     AppStartup.Failed -> androidx.compose.foundation.layout.Column(
-                        modifier = androidx.compose.ui.Modifier.padding(32.dp),
+                        // Edge-to-edge is enabled, so the failure headline must
+                        // respect the status-bar cut-out and carry explicit
+                        // typography (UI audit A2); centered like Loading for
+                        // one consistent startup-state voice.
+                        modifier = androidx.compose.ui.Modifier.fillMaxSize()
+                            .statusBarsPadding().padding(32.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
+                        horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(R.string.startup_failed))
+                        androidx.compose.material3.Text(
+                            androidx.compose.ui.res.stringResource(R.string.startup_failed),
+                            style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.error,
+                        )
                         androidx.compose.material3.Button(onClick = { app.retryStartup() }) {
                             androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(R.string.action_retry))
                         }

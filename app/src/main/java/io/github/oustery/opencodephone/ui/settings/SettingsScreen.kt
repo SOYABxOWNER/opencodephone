@@ -65,6 +65,8 @@ import io.github.oustery.opencodephone.core.designsystem.AppFonts
 import io.github.oustery.opencodephone.core.designsystem.OcInfoRow
 import io.github.oustery.opencodephone.core.designsystem.OcSectionHeader
 import io.github.oustery.opencodephone.core.designsystem.OcStatusChip
+import io.github.oustery.opencodephone.core.designsystem.OcToggleableRow
+import androidx.compose.ui.semantics.Role
 import io.github.oustery.opencodephone.core.model.ProviderAuthPrompt
 import io.github.oustery.opencodephone.core.settings.ServerMode
 import io.github.oustery.opencodephone.ui.common.VmFactory
@@ -163,6 +165,9 @@ fun SettingsScreen(graph: AppGraph) {
                                 onValueChange = { vm.setPort(it) },
                                 label = { Text(stringResource(R.string.settings_server_port)) },
                                 singleLine = true,
+                                // Digits-only IME (UI audit A5); non-digits are
+                                // dropped in the view model.
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                 modifier = Modifier.weight(1f),
                                 shape = MaterialTheme.shapes.small,
                             )
@@ -192,8 +197,14 @@ fun SettingsScreen(graph: AppGraph) {
                             Text(stringResource(R.string.settings_local_auth), style = MaterialTheme.typography.bodySmall)
                         }
                         if (state.server.mode == ServerMode.REMOTE) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                androidx.compose.material3.Checkbox(checked = state.providerSyncAllowed, onCheckedChange = vm::setProviderSyncAllowed)
+                            // Whole row toggles; the checkbox itself is inert so
+                            // tapping the label works too (UI audit A4).
+                            OcToggleableRow(
+                                checked = state.providerSyncAllowed,
+                                onCheckedChange = vm::setProviderSyncAllowed,
+                                role = Role.Checkbox,
+                            ) {
+                                androidx.compose.material3.Checkbox(checked = state.providerSyncAllowed, onCheckedChange = null)
                                 Text(stringResource(R.string.settings_provider_consent), modifier = Modifier.weight(1f))
                             }
                         }
@@ -438,10 +449,15 @@ fun SettingsScreen(graph: AppGraph) {
                 OcSectionHeader(stringResource(R.string.settings_appearance_header))
                 Card(shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(
+                        OcToggleableRow(
+                            checked = state.dynamicColor,
+                            onCheckedChange = { enabled ->
+                                // Confirmation haptic, same pattern as mode switch (E-010).
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                vm.setDynamicColor(enabled)
+                            },
+                            role = Role.Switch,
                             modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(stringResource(R.string.settings_appearance_dynamic), style = MaterialTheme.typography.bodyLarge)
@@ -453,11 +469,7 @@ fun SettingsScreen(graph: AppGraph) {
                             }
                             Switch(
                                 checked = state.dynamicColor,
-                                onCheckedChange = { enabled ->
-                                    // Confirmation haptic, same pattern as mode switch (E-010).
-                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    vm.setDynamicColor(enabled)
-                                },
+                                onCheckedChange = null,
                             )
                         }
                     }
