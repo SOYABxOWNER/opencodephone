@@ -41,6 +41,9 @@ import io.github.oustery.opencodephone.AppGraph
 import io.github.oustery.opencodephone.R
 import io.github.oustery.opencodephone.ScreenBody
 import io.github.oustery.opencodephone.ScreenHeader
+import io.github.oustery.opencodephone.core.designsystem.OcChipTone
+import io.github.oustery.opencodephone.core.designsystem.OcEmptyState
+import io.github.oustery.opencodephone.core.designsystem.OcStatusChip
 import io.github.oustery.opencodephone.ui.common.VmFactory
 
 @Composable
@@ -80,6 +83,15 @@ fun TerminalScreen(graph: AppGraph) {
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(12.dp),
                 ) {
+                    if (state.output.isEmpty()) {
+                        item(key = "terminal-empty") {
+                            OcEmptyState(
+                                title = stringResource(R.string.terminal_empty_title),
+                                description = stringResource(R.string.terminal_empty_hint),
+                                icon = painterResource(R.drawable.ic_tab_terminal),
+                            )
+                        }
+                    }
                     items(state.output) { line ->
                         // Copyable output without a toolbar (M3E audit E-011).
                         SelectionContainer {
@@ -95,6 +107,20 @@ fun TerminalScreen(graph: AppGraph) {
             LaunchedEffect(state.output.size) {
                 if (state.output.isNotEmpty()) {
                     listState.animateScrollToItem(state.output.size - 1)
+                }
+            }
+
+            // Quiet feedback while the shell is down (e.g. after `exit`) —
+            // the disabled send button alone never explains why.
+            if (!state.alive) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                ) {
+                    OcStatusChip(
+                        text = stringResource(R.string.terminal_shell_stopped),
+                        tone = OcChipTone.NEUTRAL,
+                        icon = painterResource(R.drawable.ic_refresh),
+                    )
                 }
             }
 

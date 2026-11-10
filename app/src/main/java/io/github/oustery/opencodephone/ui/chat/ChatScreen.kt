@@ -1217,7 +1217,7 @@ private fun AgentChip(agentName: String?, onClick: () -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Icon(
-                painterResource(R.drawable.ic_stat_prompt),
+                painterResource(R.drawable.ic_tab_terminal),
                 contentDescription = null,
                 modifier = Modifier.size(14.dp),
             )
@@ -1314,9 +1314,17 @@ private fun TodosCard(todos: List<TodoItem>) {
                         "cancelled" -> R.drawable.ic_close to MaterialTheme.colorScheme.onSurfaceVariant
                         else -> R.drawable.ic_chevron_right to MaterialTheme.colorScheme.onSurfaceVariant
                     }
+                    // Localized state for TalkBack instead of the raw English
+                    // server status (UI/UX stage D).
+                    val statusLabel = when (todo.status) {
+                        "completed" -> stringResource(R.string.chat_todo_done)
+                        "in_progress" -> stringResource(R.string.chat_todo_in_progress)
+                        "cancelled" -> stringResource(R.string.chat_todo_cancelled)
+                        else -> stringResource(R.string.chat_todo_pending)
+                    }
                     Icon(
                         painterResource(icon),
-                        contentDescription = todo.status,
+                        contentDescription = statusLabel,
                         modifier = Modifier.size(16.dp),
                         tint = tint,
                     )

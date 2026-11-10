@@ -97,6 +97,10 @@
 
     <!-- Agent task plan (functional audit F-010) -->
     <string name="chat_todos_title">Agent tasks</string>
+    <string name="chat_todo_pending">Pending</string>
+    <string name="chat_todo_in_progress">In progress</string>
+    <string name="chat_todo_done">Completed</string>
+    <string name="chat_todo_cancelled">Cancelled</string>
 
     <!-- Tool failure details (functional audit F-012) -->
     <string name="chat_tool_error">Error details</string>
@@ -143,6 +147,9 @@
     <string name="terminal_restart">Restart shell</string>
     <string name="terminal_input_hint">shell command…</string>
     <string name="terminal_run">Run</string>
+    <string name="terminal_empty_title">Output will appear here</string>
+    <string name="terminal_empty_hint">Run a command below — use the quick chips or the input line.</string>
+    <string name="terminal_shell_stopped">Shell is not running — tap restart above</string>
 
     <!-- Settings -->
     <string name="settings_subtitle">Server, providers and environment</string>

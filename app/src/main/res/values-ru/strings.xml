@@ -83,6 +83,10 @@
 
     <!-- План задач агента (функциональный аудит F-010) -->
     <string name="chat_todos_title">Задачи агента</string>
+    <string name="chat_todo_pending">Ожидает</string>
+    <string name="chat_todo_in_progress">В работе</string>
+    <string name="chat_todo_done">Готово</string>
+    <string name="chat_todo_cancelled">Отменено</string>
 
     <!-- Детали сбоя инструмента (функциональный аудит F-012) -->
     <string name="chat_tool_error">Подробности ошибки</string>
@@ -279,4 +283,7 @@
     <string name="settings_data_confirm_cache">Удалить скачанные установочные архивы и временные файлы? Установленное окружение не затрагивается.</string>
     <string name="settings_data_done">Очищено: %1$s</string>
     <string name="terminal_project">проект</string>
+    <string name="terminal_empty_title">Здесь появится вывод</string>
+    <string name="terminal_empty_hint">Запустите команду ниже — быстрые чипы или строка ввода.</string>
+    <string name="terminal_shell_stopped">Оболочка не запущена — нажмите кнопку перезапуска выше</string>
 </resources>

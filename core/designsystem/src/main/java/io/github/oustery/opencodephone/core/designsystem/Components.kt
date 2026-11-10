@@ -201,7 +201,16 @@ fun OcActionChip(text: String, actionLabel: String, onClick: () -> Unit, modifie
         onClick = onClick,
         modifier = modifier.heightIn(min = 48.dp).semantics { contentDescription = actionLabel },
         label = { Text(text, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-        leadingIcon = { Text("▾") },
+        // Real chevron icon instead of a text glyph (UI/UX stage D): keeps
+        // the chip in the same stroke language and font as the rest of the UI.
+        leadingIcon = {
+            Icon(
+                painterResource(R.drawable.ic_chevron_down),
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+        },
     )
 }
 
