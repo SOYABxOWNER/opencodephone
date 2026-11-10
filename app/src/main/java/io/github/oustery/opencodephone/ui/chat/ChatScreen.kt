@@ -36,10 +36,13 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -48,6 +51,7 @@ import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -65,6 +69,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -82,6 +87,7 @@ import io.github.oustery.opencodephone.core.designsystem.OcSkeletonRows
 import io.github.oustery.opencodephone.core.designsystem.OcStatusChip
 import io.github.oustery.opencodephone.core.model.ModelEntry
 import io.github.oustery.opencodephone.core.model.ProviderEntry
+import io.github.oustery.opencodephone.core.model.QuestionRequest
 import io.github.oustery.opencodephone.core.model.Session
 import io.github.oustery.opencodephone.core.model.SessionFileDiff
 import io.github.oustery.opencodephone.core.model.TodoItem
@@ -306,7 +312,18 @@ private fun ChatTimeline(vm: ChatViewModel, state: ChatUiState) {
                             text = stringResource(R.string.chat_permission_title, request.type),
                             style = MaterialTheme.typography.titleSmall,
                         )
-                        if (request.title.isNotBlank()) {
+                        // The shell command (or path) the agent wants to run,
+                        // when the tool carries one in `metadata.command`.
+                        // A local copy is required: `command` is declared in
+                        // another module, so no smart cast applies.
+                        val command = request.command
+                        if (!command.isNullOrBlank()) {
+                            Text(
+                                command,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                        } else if (request.title.isNotBlank()) {
                             Text(request.title, style = MaterialTheme.typography.bodySmall)
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -340,6 +357,17 @@ private fun ChatTimeline(vm: ChatViewModel, state: ChatUiState) {
         }
 
         ChatInput(vm, state)
+
+        // Agent questions (v1.19.5 `question` tool): a modal answer dialog
+        // because the agent blocks on the reply until it is answered or
+        // dismissed. Dismissal outside the buttons also rejects the request.
+        state.question?.let { request ->
+            QuestionDialog(
+                request = request,
+                onAnswer = vm::answerQuestion,
+                onDismiss = vm::dismissQuestion,
+            )
+        }
 
         revertFor?.let { target ->
             AlertDialog(
@@ -870,6 +898,134 @@ private fun RenameSessionDialog(initial: String, onSave: (String) -> Unit, onDis
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+        },
+    )
+}
+
+/**
+ * Modal dialog for the pending agent question (v1.19.5 `question` tool).
+ * One request can carry several questions: single-choice ones render as
+ * radio buttons, `multiple` ones as checkboxes, and every question accepts
+ * a typed custom answer unless the server disables it (custom=false).
+ * A typed custom answer takes precedence over selected options.
+ */
+@Composable
+private fun QuestionDialog(
+    request: QuestionRequest,
+    onAnswer: (List<List<String>>) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val selections = remember(request.id) {
+        List(request.questions.size) { mutableStateOf(emptySet<Int>()) }
+    }
+    val customs = remember(request.id) {
+        List(request.questions.size) { mutableStateOf("") }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            val single = request.questions.size == 1
+            val header = request.questions.firstOrNull()?.header.orEmpty()
+            Text(
+                if (single && header.isNotBlank()) header
+                else stringResource(R.string.chat_question_title),
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                request.questions.forEachIndexed { index, info ->
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        if (request.questions.size > 1) {
+                            Text(
+                                info.header.ifBlank { "${index + 1}" },
+                                style = MaterialTheme.typography.titleSmall,
+                            )
+                        }
+                        Text(info.question, style = MaterialTheme.typography.bodyMedium)
+                        if (info.multiple == true) {
+                            Text(
+                                stringResource(R.string.chat_question_multi_hint),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Column(modifier = Modifier.selectableGroup()) {
+                            info.options.forEachIndexed { optionIndex, option ->
+                                val selected = selections[index].value.contains(optionIndex)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .selectable(
+                                            selected = selected,
+                                            role = if (info.multiple == true) Role.Checkbox else Role.RadioButton,
+                                            onClick = {
+                                                val current = selections[index].value
+                                                selections[index].value = if (info.multiple == true) {
+                                                    if (selected) current - optionIndex else current + optionIndex
+                                                } else {
+                                                    setOf(optionIndex)
+                                                }
+                                            },
+                                        ),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    if (info.multiple == true) {
+                                        Checkbox(checked = selected, onCheckedChange = null)
+                                    } else {
+                                        RadioButton(selected = selected, onClick = null)
+                                    }
+                                    Column(modifier = Modifier.padding(start = 8.dp)) {
+                                        Text(option.label, style = MaterialTheme.typography.bodyLarge)
+                                        if (option.description.isNotBlank()) {
+                                            Text(
+                                                option.description,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if (info.custom != false) {
+                            OutlinedTextField(
+                                value = customs[index].value,
+                                onValueChange = { customs[index].value = it },
+                                label = { Text(stringResource(R.string.chat_question_custom)) },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = MaterialTheme.shapes.small,
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val answers = request.questions.mapIndexed { index, info ->
+                    val custom = customs[index].value.trim()
+                    val labels = selections[index].value.mapNotNull { info.options.getOrNull(it)?.label }
+                    when {
+                        custom.isNotBlank() && info.multiple == true -> labels + custom
+                        custom.isNotBlank() -> listOf(custom)
+                        else -> labels
+                    }
+                }
+                onAnswer(answers)
+            }) {
+                Text(stringResource(R.string.chat_question_answer))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.chat_question_skip))
+            }
         },
     )
 }
