@@ -21,6 +21,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import io.github.oustery.opencodephone.core.designsystem.OcActionChip
 import io.github.oustery.opencodephone.core.designsystem.AppFonts
+import io.github.oustery.opencodephone.core.designsystem.MarkdownText
 import io.github.oustery.opencodephone.core.designsystem.OcDisclosure
 import io.github.oustery.opencodephone.core.designsystem.AppMessageShapes
 import androidx.compose.foundation.layout.Arrangement
@@ -634,7 +635,7 @@ private fun MessageBubble(message: UiMessage, onCopy: (String) -> Unit, onRevert
                 ),
         ) {
             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                message.parts.forEach { part -> PartView(part, onCopy, onRevert) }
+                message.parts.forEach { part -> PartView(part, onCopy, onRevert, markdown = !isUser) }
             }
         }
     }
@@ -642,10 +643,25 @@ private fun MessageBubble(message: UiMessage, onCopy: (String) -> Unit, onRevert
 }
 
 @Composable
-private fun PartView(part: UiPart, onCopy: (String) -> Unit, onRevert: (() -> Unit)? = null) {
+private fun PartView(
+    part: UiPart,
+    onCopy: (String) -> Unit,
+    onRevert: (() -> Unit)? = null,
+    markdown: Boolean = false,
+) {
     when (part) {
         is UiPart.Text -> Column {
-            SelectionText(part.text)
+            // Agent output is markdown-first, so assistant answers render
+            // through the themed expressive renderer; user drafts stay
+            // verbatim plain text.
+            if (markdown) {
+                MarkdownText(
+                    markdown = part.text,
+                    codeCopyLabel = stringResource(R.string.action_copy),
+                )
+            } else {
+                SelectionText(part.text)
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End,
