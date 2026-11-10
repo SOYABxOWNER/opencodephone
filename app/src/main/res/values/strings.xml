@@ -15,6 +15,7 @@
     <string name="action_delete">Delete</string>
     <string name="action_copy">Copy</string>
     <string name="action_dismiss">Dismiss</string>
+    <string name="action_close">Close</string>
 
     <!-- Bootstrap -->
     <string name="bootstrap_subtitle">Local OpenCode AI coding agent on your phone, inside a Debian environment</string>
@@ -117,8 +118,12 @@
     <string name="git_commit_title">Commit changes</string>
     <string name="git_commit_stage_hint">Choose which changed files to stage:</string>
     <string name="git_commit">Commit</string>
+    <string name="git_pull">Pull</string>
     <string name="git_push">Push</string>
     <string name="files_rename">Rename</string>
+    <string name="files_share">Share</string>
+    <string name="files_preview">Preview</string>
+    <string name="files_preview_failed">Preview is not available: %1$s</string>
     <string name="files_rename_hint">New name (no path separators)</string>
     <string name="files_delete_title">Delete %1$s?</string>
     <string name="files_delete_file_body">This permanently removes the file from the workspace. The change cannot be undone here.</string>
