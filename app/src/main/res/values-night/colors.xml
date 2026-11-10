@@ -1,7 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Launcher adaptive icon colors: dark theme -->
-    <color name="ic_launcher_background">#10201D</color>
-    <color name="ic_launcher_glyph">#80D5C8</color>
     <color name="window_background">#0D1513</color>
 </resources>

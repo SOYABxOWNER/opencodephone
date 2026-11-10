@@ -1,11 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Launcher adaptive-icon foreground + monochrome layer: a chat bubble with a
+  terminal prompt (">_") - the OpenCode agent you talk to. Drawn as white
+  strokes on the 108dp adaptive grid; everything stays inside the 66dp safe
+  zone (stroke edges within the 72dp mask circle) so circular, squircle and
+  square masks all keep the full glyph.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
-    <group>
-        <path android:fillColor="@color/ic_launcher_glyph"
-            android:pathData="M37,35 L55,54 L37,73 L42.5,78.5 L66,54 L42.5,29.5 Z"/>
-        <path android:fillColor="@color/ic_launcher_glyph"
-            android:pathData="M58,71.5 L79,71.5 L79,78.5 L58,78.5 Z"/>
-    </group>
+    <!-- chat bubble with a bottom-left tail -->
+    <path
+        android:pathData="M41,33 H67 A12,12 0 0,1 79,45 V63 A12,12 0 0,1 67,75 H50 L40,83 V75 H41 A12,12 0 0,1 29,63 V45 A12,12 0 0,1 41,33 Z"
+        android:strokeColor="#FFFFFFFF" android:strokeWidth="6"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+    <!-- prompt chevron -->
+    <path
+        android:pathData="M44,45 L53,54 L44,63"
+        android:strokeColor="#FFFFFFFF" android:strokeWidth="6"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+    <!-- prompt underscore -->
+    <path
+        android:pathData="M58,63 H68"
+        android:strokeColor="#FFFFFFFF" android:strokeWidth="6"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
 </vector>
