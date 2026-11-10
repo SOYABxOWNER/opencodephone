@@ -20,6 +20,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import io.github.oustery.opencodephone.core.designsystem.OcActionChip
+import io.github.oustery.opencodephone.core.designsystem.AppFonts
 import io.github.oustery.opencodephone.core.designsystem.OcDisclosure
 import io.github.oustery.opencodephone.core.designsystem.AppMessageShapes
 import androidx.compose.foundation.layout.Arrangement
@@ -69,7 +70,6 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -321,7 +321,7 @@ private fun ChatTimeline(vm: ChatViewModel, state: ChatUiState) {
                             Text(
                                 command,
                                 style = MaterialTheme.typography.bodySmall,
-                                fontFamily = FontFamily.Monospace,
+                                fontFamily = AppFonts.Code,
                             )
                         } else if (request.title.isNotBlank()) {
                             Text(request.title, style = MaterialTheme.typography.bodySmall)

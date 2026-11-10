@@ -53,7 +53,6 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.size
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -62,6 +61,7 @@ import io.github.oustery.opencodephone.AppGraph
 import io.github.oustery.opencodephone.R
 import io.github.oustery.opencodephone.ScreenBody
 import io.github.oustery.opencodephone.core.designsystem.OcChipTone
+import io.github.oustery.opencodephone.core.designsystem.AppFonts
 import io.github.oustery.opencodephone.core.designsystem.OcInfoRow
 import io.github.oustery.opencodephone.core.designsystem.OcSectionHeader
 import io.github.oustery.opencodephone.core.designsystem.OcStatusChip
@@ -325,7 +325,7 @@ fun SettingsScreen(graph: AppGraph) {
                                 Text(
                                     "••••" + key.apiKey.takeLast(4),
                                     style = MaterialTheme.typography.bodySmall,
-                                    fontFamily = FontFamily.Monospace,
+                                    fontFamily = AppFonts.Code,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                                 TextButton(onClick = { vm.removeProviderKey(key.providerId) }) {
@@ -807,7 +807,7 @@ private fun ConsoleSignInDialog(
                 Text(
                     userCode,
                     style = MaterialTheme.typography.headlineSmall,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = AppFonts.Code,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(onClick = { clipboard.setText(AnnotatedString(userCode)) }) {

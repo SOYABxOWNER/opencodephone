@@ -26,13 +26,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.oustery.opencodephone.AppGraph
 import io.github.oustery.opencodephone.R
 import io.github.oustery.opencodephone.core.designsystem.OcChipTone
+import io.github.oustery.opencodephone.core.designsystem.AppFonts
 import io.github.oustery.opencodephone.core.designsystem.OcStatusChip
 import io.github.oustery.opencodephone.core.model.BootstrapPhase
 import io.github.oustery.opencodephone.core.settings.SetupChoice
@@ -151,7 +151,7 @@ fun BootstrapScreen(graph: AppGraph) {
                                         Text(
                                             text = state.log.takeLast(12).joinToString("\n"),
                                             style = MaterialTheme.typography.bodySmall,
-                                            fontFamily = FontFamily.Monospace,
+                                            fontFamily = AppFonts.Code,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         )
                                     }

@@ -15,6 +15,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import io.github.oustery.opencodephone.core.designsystem.AppFonts
 import io.github.oustery.opencodephone.core.designsystem.CodeTypography
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -58,7 +59,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -466,7 +466,7 @@ private fun CommitDialog(
                             Text(
                                 change.status,
                                 style = MaterialTheme.typography.labelSmall,
-                                fontFamily = FontFamily.Monospace,
+                                fontFamily = AppFonts.Code,
                                 modifier = Modifier.width(28.dp),
                             )
                             Text(
