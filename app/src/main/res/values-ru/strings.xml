@@ -69,6 +69,25 @@
     <string name="chat_provider_no_key">нет ключа</string>
     <string name="chat_model_selected">выбрана</string>
 
+    <!-- Выбор агента (функциональный аудит F-006) -->
+    <string name="chat_agent_title">Агент</string>
+    <string name="chat_agent_default">Базовый агент</string>
+    <string name="chat_agent_hint">Агент определяет режим работы opencode: Build правит файлы и выполняет команды, Plan только обсуждает. Выбор сохраняется между сессиями.</string>
+    <string name="chat_agent_empty">Сервер не сообщил ни одного доступного агента.</string>
+
+    <!-- План задач агента (функциональный аудит F-010) -->
+    <string name="chat_todos_title">Задачи агента</string>
+
+    <!-- Детали сбоя инструмента (функциональный аудит F-012) -->
+    <string name="chat_tool_error">Подробности ошибки</string>
+
+    <!-- Откат сессии (функциональный аудит F-014) -->
+    <string name="chat_revert_action">Откатить сюда</string>
+    <string name="chat_revert_title">Откатить сессию?</string>
+    <string name="chat_revert_body">Это сообщение и всё, что после него, покинут контекст беседы. Позже их можно вернуть кнопкой «Восстановить».</string>
+    <string name="chat_revert_banner">Сессия откачена — последующие сообщения скрыты из истории и из контекста агента.</string>
+    <string name="chat_unrevert">Восстановить</string>
+
     <!-- Files -->
     <string name="files_env_not_ready">Среда Linux ещё не установлена — команды git станут доступны после завершения настройки.</string>
     <string name="files_clone">Клонировать</string>

@@ -28,6 +28,20 @@ class PartsTest {
         assertEquals("completed", tool.status)
         assertEquals("Run tests", tool.title)
         assertEquals("ok", tool.output)
+        assertEquals(null, tool.error)
+    }
+
+    @Test
+    fun `tool error state is surfaced for failed tools`() {
+        val el = OcJson.lenient.parseToJsonElement(
+            """{"type":"tool","tool":"question","state":{"status":"error","title":"Ask user","error":"Tool question is not available"}}""",
+        )
+        val part = Parts.parse(el)
+        assertTrue(part is UiPart.Tool)
+        val tool = part as UiPart.Tool
+        assertEquals("error", tool.status)
+        assertEquals("Tool question is not available", tool.error)
+        assertEquals(null, tool.output)
     }
 
     @Test

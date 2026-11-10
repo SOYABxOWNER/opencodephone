@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import io.github.oustery.opencodephone.AppGraph
 import io.github.oustery.opencodephone.core.linuxenv.ServerState
 import io.github.oustery.opencodephone.core.linuxenv.PRootCommand
+import io.github.oustery.opencodephone.core.model.AgentInfo
 import io.github.oustery.opencodephone.core.model.MessageWithParts
 import io.github.oustery.opencodephone.core.model.OcJson
 import io.github.oustery.opencodephone.core.model.PermissionRequest
@@ -14,6 +15,8 @@ import io.github.oustery.opencodephone.core.model.Parts
 import io.github.oustery.opencodephone.core.model.ProviderEntry
 import io.github.oustery.opencodephone.core.model.ServerEvent
 import io.github.oustery.opencodephone.core.model.Session
+import io.github.oustery.opencodephone.core.model.SessionRevert
+import io.github.oustery.opencodephone.core.model.TodoItem
 import io.github.oustery.opencodephone.core.model.UiPart
 import io.github.oustery.opencodephone.core.settings.DraftStore
 import io.github.oustery.opencodephone.core.settings.ModelSelection
@@ -33,6 +36,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -98,6 +102,15 @@ data class ChatUiState(
     val showDiff: Boolean = false,
     val diffLoading: Boolean = false,
     val diff: List<io.github.oustery.opencodephone.core.model.SessionFileDiff> = emptyList(),
+    // Agent selection (functional audit F-006): null follows the server default.
+    val agents: List<AgentInfo> = emptyList(),
+    val agentName: String? = null,
+    val showAgents: Boolean = false,
+    // Agent task plan for the active session (functional audit F-010).
+    val todos: List<TodoItem> = emptyList(),
+    // Revert marker of the active session (functional audit F-014);
+    // non-null while messages from that point onward are reverted.
+    val revertMarker: SessionRevert? = null,
 )
 
 class ChatViewModel(private val graph: AppGraph) : ViewModel() {
@@ -196,6 +209,14 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
             val health = activeClient.health()
             syncProviderKeys()
             loadProviders()
+            // The agent list is a convenience affordance (F-006); a server
+            // that does not expose it must not break the connection.
+            try {
+                loadAgents()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+            }
             loadSessions()
             subscribeEvents()
             _state.update {
@@ -239,9 +260,42 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
         _state.update { state ->
             val active = state.activeSessionId?.takeIf { id -> sessions.any { it.id == id } }
                 ?: sessions.firstOrNull()?.id
-            state.copy(sessions = sessions, activeSessionId = active, sessionsLoading = false)
+            state.copy(
+                sessions = sessions,
+                activeSessionId = active,
+                sessionsLoading = false,
+                revertMarker = active?.let { id -> sessions.firstOrNull { it.id == id }?.revert },
+            )
         }
-        _state.value.activeSessionId?.let { loadMessages(it, required = true) }
+        _state.value.activeSessionId?.let {
+            loadMessages(it, required = true)
+            loadTodosQuiet(it)
+        }
+    }
+
+    /** Load the agent list for the picker; empty on failure (F-006). */
+    private suspend fun loadAgents() {
+        val agents = activeClient.listAgents()
+            .filter { it.hidden != true && it.mode != "subagent" }
+            .sortedBy { it.name }
+        _state.update { it.copy(agents = agents, agentName = it.agentName ?: graph.settings.agentName()) }
+    }
+
+    /** Pick an agent for future prompts; null follows the server default (F-006). */
+    fun selectAgent(name: String?) {
+        graph.settings.setAgentName(name)
+        _state.update { it.copy(agentName = name?.takeIf { n -> n.isNotBlank() }) }
+    }
+
+    /** Fetch the agent's task plan; todos are optional, failures stay quiet (F-010). */
+    private suspend fun loadTodosQuiet(sessionId: String) {
+        try {
+            val todos = activeClient.sessionTodos(sessionId)
+            if (_state.value.activeSessionId == sessionId) _state.update { it.copy(todos = todos) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+        }
     }
 
     private suspend fun reconcileStatus(client: OpenCodeClient = activeClient) {
@@ -326,6 +380,18 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                 }
             }
 
+            // Agent task plan updates for the active session (F-010).
+            event.type == "todo.updated" -> {
+                val props = event.properties as? JsonObject
+                val sessionId = OcJson.run { props?.optString("sessionID") }
+                if (sessionId != null && sessionId == _state.value.activeSessionId) {
+                    val todos = (props?.get("todos") as? JsonArray)?.mapNotNull { el ->
+                        runCatching { OcJson.lenient.decodeFromString(TodoItem.serializer(), el.toString()) }.getOrNull()
+                    }.orEmpty()
+                    _state.update { it.copy(todos = todos) }
+                }
+            }
+
             event.type == "permission.replied" -> {
                 reconcileStatus()
             }
@@ -336,7 +402,13 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
         try {
             val sessions = activeClient.listSessions(limit = CHAT_SESSIONS_LIMIT)
                 .sortedByDescending { it.time?.created ?: 0L }
-            _state.update { it.copy(sessions = sessions) }
+            _state.update { st ->
+                st.copy(
+                    sessions = sessions,
+                    revertMarker = st.activeSessionId?.let { id -> sessions.firstOrNull { it.id == id }?.revert },
+                )
+            }
+            _state.value.activeSessionId?.let { loadTodosQuiet(it) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -358,9 +430,14 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                     parts = Parts.uiParts(msg.parts),
                 )
             }.filter { it.parts.isNotEmpty() }
+            // A reverted session hides the marker message and everything newer
+            // (the server keeps them until unrevert, functional audit F-014);
+            // message ids are time-ordered, matching the V1 before-cursor.
+            val marker = _state.value.revertMarker?.messageId?.takeIf { it.isNotBlank() }
+            val visible = if (marker != null) ui.filter { it.id < marker } else ui
             _state.update {
                 if (ticket == endpointEpoch && it.activeSessionId == sessionId) {
-                    it.copy(messages = ui, earlierCursor = page.nextCursor)
+                    it.copy(messages = visible, earlierCursor = page.nextCursor)
                 } else {
                     it
                 }
@@ -589,7 +666,13 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                 val session = client.createSession(projectName)
                 if (ticket != endpointEpoch) return@launch
                 _state.update {
-                    it.copy(activeSessionId = session.id, messages = emptyList(), showSessions = false)
+                    it.copy(
+                        activeSessionId = session.id,
+                        messages = emptyList(),
+                        showSessions = false,
+                        todos = emptyList(),
+                        revertMarker = null,
+                    )
                 }
                 loadSessionsQuiet()
             } catch (e: CancellationException) {
@@ -603,10 +686,21 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
 
     fun selectSession(sessionId: String) {
         historyWindow = CHAT_MESSAGE_PAGE
-        _state.update { it.copy(activeSessionId = sessionId, showSessions = false, messages = emptyList(), earlierCursor = null, loadingEarlier = false) }
+        _state.update {
+            it.copy(
+                activeSessionId = sessionId,
+                showSessions = false,
+                messages = emptyList(),
+                earlierCursor = null,
+                loadingEarlier = false,
+                todos = emptyList(),
+                revertMarker = it.sessions.firstOrNull { s -> s.id == sessionId }?.revert,
+            )
+        }
         messagesJob?.cancel()
         messagesJob = viewModelScope.launch {
             loadMessages(sessionId)
+            loadTodosQuiet(sessionId)
             try { reconcileStatus() }
             catch (e: CancellationException) { throw e }
             catch (e: Exception) { _state.update { it.copy(error = e.message) } }
@@ -741,7 +835,7 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                     text = sentDraft,
                     providerId = selection?.providerId,
                     modelId = selection?.modelId,
-                    agent = null,
+                    agent = current.agentName,
                     attachments = if (remote) emptyList() else sentAttachments.map { file ->
                         io.github.oustery.opencodephone.core.opencode.PromptAttachment(
                             path = file.envPath,
@@ -785,6 +879,50 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
         }
     }
 
+    /**
+     * Revert the session to before a user message (F-014): that message and
+     * everything after it leave the context until unrevert. The visible
+     * timeline shrinks on the next reload.
+     */
+    fun revertTo(messageId: String) {
+        val sessionId = _state.value.activeSessionId ?: return
+        val client = activeClient
+        val ticket = endpointEpoch
+        viewModelScope.launch {
+            try {
+                client.revert(sessionId, messageId)
+                if (ticket != endpointEpoch) return@launch
+                loadSessionsQuiet()
+                loadMessages(sessionId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (ticket != endpointEpoch) return@launch
+                _state.update { it.copy(error = e.message) }
+            }
+        }
+    }
+
+    /** Restore all reverted messages (F-014). */
+    fun unrevert() {
+        val sessionId = _state.value.activeSessionId ?: return
+        val client = activeClient
+        val ticket = endpointEpoch
+        viewModelScope.launch {
+            try {
+                client.unrevert(sessionId)
+                if (ticket != endpointEpoch) return@launch
+                loadSessionsQuiet()
+                loadMessages(sessionId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (ticket != endpointEpoch) return@launch
+                _state.update { it.copy(error = e.message) }
+            }
+        }
+    }
+
     fun respondPermission(response: String) {
         val request = _state.value.permission ?: return
         val client = activeClient
@@ -812,6 +950,8 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
     fun showSessions(show: Boolean) = _state.update { it.copy(showSessions = show) }
 
     fun showModels(show: Boolean) = _state.update { it.copy(showModels = show) }
+
+    fun showAgents(show: Boolean) = _state.update { it.copy(showAgents = show) }
 
     fun dismissError() = _state.update { it.copy(error = null) }
 

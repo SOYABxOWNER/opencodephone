@@ -83,6 +83,25 @@
     <string name="chat_provider_no_key">no key</string>
     <string name="chat_model_selected">selected</string>
 
+    <!-- Agent selection (functional audit F-006) -->
+    <string name="chat_agent_title">Agent</string>
+    <string name="chat_agent_default">Default agent</string>
+    <string name="chat_agent_hint">The agent shapes how opencode works: Build edits files and runs commands, Plan only discusses. The choice is remembered across sessions.</string>
+    <string name="chat_agent_empty">The server did not report any selectable agents.</string>
+
+    <!-- Agent task plan (functional audit F-010) -->
+    <string name="chat_todos_title">Agent tasks</string>
+
+    <!-- Tool failure details (functional audit F-012) -->
+    <string name="chat_tool_error">Error details</string>
+
+    <!-- Session revert (functional audit F-014) -->
+    <string name="chat_revert_action">Revert to here</string>
+    <string name="chat_revert_title">Revert session?</string>
+    <string name="chat_revert_body">This message and everything after it will leave the conversation context. You can restore them later with “Restore”.</string>
+    <string name="chat_revert_banner">The session is reverted — later messages are hidden from the timeline and the agent context.</string>
+    <string name="chat_unrevert">Restore</string>
+
     <!-- Files -->
     <string name="files_env_not_ready">The Linux environment is not installed yet — git commands become available after setup completes.</string>
     <string name="files_clone">Clone</string>

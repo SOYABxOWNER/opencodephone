@@ -8,6 +8,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
@@ -64,6 +66,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -81,6 +84,7 @@ import io.github.oustery.opencodephone.core.model.ModelEntry
 import io.github.oustery.opencodephone.core.model.ProviderEntry
 import io.github.oustery.opencodephone.core.model.Session
 import io.github.oustery.opencodephone.core.model.SessionFileDiff
+import io.github.oustery.opencodephone.core.model.TodoItem
 import io.github.oustery.opencodephone.core.model.UiPart
 import io.github.oustery.opencodephone.ui.common.VmFactory
 import java.net.URLDecoder
@@ -146,6 +150,11 @@ fun ChatScreen(graph: AppGraph, onOpenSettings: () -> Unit) {
             )
         }
 
+        if (state.showAgents) {
+            OcExpressiveSheet(onDismissRequest = { vm.showAgents(false) }) {
+                AgentsSheet(vm, state)
+            }
+        }
         if (state.showSessions) {
             OcExpressiveSheet(onDismissRequest = { vm.showSessions(false) }) {
                 SessionsSheet(vm, state)
@@ -184,6 +193,9 @@ private fun ChatTimeline(vm: ChatViewModel, state: ChatUiState) {
     ScreenBody {
         val listState = rememberLazyListState()
         val clipboard = LocalClipboardManager.current
+        // Revert confirmation (functional audit F-014): long-press on a user
+        // message offers "revert the session to before this message".
+        var revertFor by remember { mutableStateOf<UiMessage?>(null) }
 
         LazyColumn(
             state = listState,
@@ -216,7 +228,13 @@ private fun ChatTimeline(vm: ChatViewModel, state: ChatUiState) {
                 }
             }
             items(state.messages, key = { it.id }) { message ->
-                MessageBubble(message, onCopy = { text -> clipboard.setText(AnnotatedString(text)) })
+                MessageBubble(
+                    message,
+                    onCopy = { text -> clipboard.setText(AnnotatedString(text)) },
+                    onRevert = if (message.role == "user") {
+                        { revertFor = message }
+                    } else null,
+                )
             }
             // Older history is one tap away instead of being loaded wholesale
             // (functional audit F-011).
@@ -246,6 +264,34 @@ private fun ChatTimeline(vm: ChatViewModel, state: ChatUiState) {
         Text(stringResource(R.string.chat_connected, state.version),
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+        // Agent task plan for the active session (functional audit F-010).
+        if (state.todos.isNotEmpty()) {
+            TodosCard(state.todos)
+        }
+
+        // The session is reverted at a message (functional audit F-014):
+        // later messages are hidden from the timeline and the context until
+        // the user restores them.
+        if (state.revertMarker != null) {
+            Surface(
+                shape = MaterialTheme.shapes.medium,
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+            ) {
+                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        stringResource(R.string.chat_revert_banner),
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = { vm.unrevert() }) {
+                        Text(stringResource(R.string.chat_unrevert))
+                    }
+                }
+            }
+        }
 
         AnimatedVisibility(visible = state.permission != null) {
             state.permission?.let { request ->
@@ -294,6 +340,25 @@ private fun ChatTimeline(vm: ChatViewModel, state: ChatUiState) {
         }
 
         ChatInput(vm, state)
+
+        revertFor?.let { target ->
+            AlertDialog(
+                onDismissRequest = { revertFor = null },
+                title = { Text(stringResource(R.string.chat_revert_title)) },
+                text = { Text(stringResource(R.string.chat_revert_body)) },
+                confirmButton = {
+                    TextButton(onClick = {
+                        revertFor = null
+                        vm.revertTo(target.id)
+                    }) { Text(stringResource(R.string.chat_revert_action)) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { revertFor = null }) {
+                        Text(stringResource(R.string.action_cancel))
+                    }
+                },
+            )
+        }
     }
 }
 
@@ -303,15 +368,22 @@ private fun ChatInput(vm: ChatViewModel, state: ChatUiState) {
         vm.attachUri(uri)
     }
     androidx.compose.foundation.layout.Column(modifier = Modifier.fillMaxWidth()) {
-        // Shared project context (functional audit F-001): the repository
-        // selected in Files is visible next to the composer.
-        state.projectContext?.let { project ->
-            Row(modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 4.dp)) {
+        // Shared project context (functional audit F-001) next to the agent
+        // picker (functional audit F-006), both above the composer.
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            state.projectContext?.let { project ->
                 OcStatusChip(
                     text = stringResource(R.string.chat_project_chip, project.substringAfterLast('/')),
                     tone = OcChipTone.NEUTRAL,
                 )
             }
+            AgentChip(
+                agentName = state.agentName,
+                onClick = { vm.showAgents(true) },
+            )
         }
         if (state.attachments.isNotEmpty()) {
             androidx.compose.foundation.lazy.LazyRow(
@@ -449,9 +521,11 @@ private fun formatAttachmentSize(bytes: Long): String {
     return text
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MessageBubble(message: UiMessage, onCopy: (String) -> Unit) {
+private fun MessageBubble(message: UiMessage, onCopy: (String) -> Unit, onRevert: (() -> Unit)?) {
     val isUser = message.role == "user"
+    val revertHint = stringResource(R.string.chat_revert_action)
     BoxWithConstraints(Modifier.fillMaxWidth()) {
     val bubbleWidth = (maxWidth * 0.9f).coerceAtMost(560.dp)
     Row(
@@ -462,7 +536,21 @@ private fun MessageBubble(message: UiMessage, onCopy: (String) -> Unit) {
             shape = if (isUser) AppMessageShapes.outgoing else AppMessageShapes.incoming,
             color = if (isUser) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
             contentColor = if (isUser) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.widthIn(max = bubbleWidth),
+            modifier = Modifier
+                .widthIn(max = bubbleWidth)
+                // Long-press on a user message offers the revert action (F-014).
+                .then(
+                    if (onRevert != null) {
+                        Modifier.combinedClickable(
+                            role = Role.Button,
+                            onClick = {},
+                            onLongClick = onRevert,
+                            onLongClickLabel = revertHint,
+                        )
+                    } else {
+                        Modifier
+                    },
+                ),
         ) {
             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 message.parts.forEach { part -> PartView(part, onCopy) }
@@ -587,6 +675,23 @@ private fun ToolCard(part: UiPart.Tool) {
                     SelectionContainer {
                         Text(output.take(4000), style = io.github.oustery.opencodephone.core.designsystem.CodeTypography.output,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            // Failure explanation instead of a bare error chip (F-012).
+            val error = part.error
+            if (part.status == "error" && !error.isNullOrBlank()) {
+                OcDisclosure(
+                    title = stringResource(R.string.chat_tool_error),
+                    expandedDescription = stringResource(R.string.state_expanded),
+                    collapsedDescription = stringResource(R.string.state_collapsed),
+                ) {
+                    SelectionContainer {
+                        Text(
+                            error.take(4000),
+                            style = io.github.oustery.opencodephone.core.designsystem.CodeTypography.output,
+                            color = MaterialTheme.colorScheme.error,
+                        )
                     }
                 }
             }
@@ -937,6 +1042,139 @@ private fun ModelRow(model: ModelEntry, isSelected: Boolean, onClick: () -> Unit
         }
         if (isSelected) {
             OcStatusChip(text = stringResource(R.string.chat_model_selected), tone = OcChipTone.PRIMARY)
+        }
+    }
+}
+
+/** Composer chip opening the agent picker (functional audit F-006). */
+@Composable
+private fun AgentChip(agentName: String?, onClick: () -> Unit) {
+    Surface(
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        modifier = Modifier.clickable(role = Role.Button, onClick = onClick),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(
+                painterResource(R.drawable.ic_stat_prompt),
+                contentDescription = null,
+                modifier = Modifier.size(14.dp),
+            )
+            Text(
+                agentName ?: stringResource(R.string.chat_agent_default),
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.widthIn(max = 180.dp),
+            )
+        }
+    }
+}
+
+/** Agent picker backed by `GET /agent`; primary agents only (F-006). */
+@Composable
+private fun AgentsSheet(vm: ChatViewModel, state: ChatUiState) {
+    Column(modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp).padding(horizontal = 20.dp, vertical = 12.dp)) {
+        Text(stringResource(R.string.chat_agent_title), style = MaterialTheme.typography.titleLarge)
+        Text(
+            stringResource(R.string.chat_agent_hint),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.size(8.dp))
+        if (state.agents.isEmpty()) {
+            Text(
+                stringResource(R.string.chat_agent_empty),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
+            item(key = "agent:default") {
+                AgentRow(
+                    name = null,
+                    isSelected = state.agentName == null,
+                    onClick = { vm.selectAgent(null) },
+                )
+            }
+            items(state.agents, key = { "agent:${it.name}" }) { agent ->
+                AgentRow(
+                    name = agent.name,
+                    isSelected = state.agentName == agent.name,
+                    onClick = { vm.selectAgent(agent.name) },
+                )
+            }
+        }
+        Spacer(Modifier.size(24.dp))
+    }
+}
+
+@Composable
+private fun AgentRow(name: String?, isSelected: Boolean, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .semantics { selected = isSelected }
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(vertical = 8.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = name ?: stringResource(R.string.chat_agent_default),
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f),
+        )
+        if (isSelected) {
+            OcStatusChip(text = stringResource(R.string.chat_model_selected), tone = OcChipTone.PRIMARY)
+        }
+    }
+}
+
+/** The agent's task plan for the active session (functional audit F-010). */
+@Composable
+private fun TodosCard(todos: List<TodoItem>) {
+    Surface(
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(stringResource(R.string.chat_todos_title), style = MaterialTheme.typography.titleSmall)
+            todos.forEach { todo ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    val done = todo.status == "completed" || todo.status == "cancelled"
+                    val (icon, tint) = when (todo.status) {
+                        "completed" -> R.drawable.ic_check to MaterialTheme.colorScheme.primary
+                        "in_progress" -> R.drawable.ic_refresh to MaterialTheme.colorScheme.tertiary
+                        "cancelled" -> R.drawable.ic_close to MaterialTheme.colorScheme.onSurfaceVariant
+                        else -> R.drawable.ic_chevron_right to MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                    Icon(
+                        painterResource(icon),
+                        contentDescription = todo.status,
+                        modifier = Modifier.size(16.dp),
+                        tint = tint,
+                    )
+                    Text(
+                        todo.content,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (done) {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                    )
+                }
+            }
         }
     }
 }

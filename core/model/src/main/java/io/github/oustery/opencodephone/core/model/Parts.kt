@@ -23,6 +23,8 @@ sealed interface UiPart {
         val status: String,
         val title: String?,
         val output: String?,
+        /** Failure explanation from the tool state (functional audit F-012). */
+        val error: String? = null,
     ) : UiPart
 
     data class Step(val kind: String) : UiPart
@@ -54,6 +56,7 @@ object Parts {
                         status = state?.optString("status") ?: "unknown",
                         title = state?.optString("title"),
                         output = state?.optString("output"),
+                        error = state?.optString("error"),
                     )
                 }
                 "step-start" -> UiPart.Step("start")

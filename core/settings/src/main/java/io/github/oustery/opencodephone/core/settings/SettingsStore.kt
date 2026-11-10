@@ -159,6 +159,19 @@ class SettingsStore(private val context: Context) {
         it.putString(KEY_MODEL_ID, selection.modelId)
     }
 
+    // ------------------------------------------------------------- Agents
+
+    /**
+     * Selected opencode agent (`build`, `plan`, …); null follows the server
+     * default (functional audit F-006). Persisted so the choice survives
+     * restarts, mirroring the model selection.
+     */
+    fun agentName(): String? = prefs.getString(KEY_AGENT_NAME, null)?.ifBlank { null }
+
+    fun setAgentName(name: String?) = edit {
+        if (name.isNullOrBlank()) it.remove(KEY_AGENT_NAME) else it.putString(KEY_AGENT_NAME, name)
+    }
+
     // ---------------------------------------------------------------- Git
 
     fun gitConfig(): GitConfig = GitConfig(
@@ -251,6 +264,7 @@ class SettingsStore(private val context: Context) {
                     .put("providerId", model.providerId)
                     .put("modelId", model.modelId),
             )
+            .put("agent", agentName().orEmpty())
             .put("opencodePin", opencodeVersionPin())
             .put("dynamicColor", dynamicColor())
             .put("setupChoice", setupChoice().name)
@@ -303,6 +317,7 @@ class SettingsStore(private val context: Context) {
                 sections++
             }
         }
+        if (json.has("agent")) setAgentName(json.optString("agent").ifBlank { null })
         if (json.has("opencodePin")) {
             val pin = json.optString("opencodePin", Pins.OPENCODE_VERSION)
             if (pin.isNotBlank()) setOpencodeVersionPin(pin)
@@ -332,6 +347,7 @@ class SettingsStore(private val context: Context) {
         private const val KEY_PROVIDER_KEYS = "provider_keys"
         private const val KEY_MODEL_PROVIDER = "model_provider"
         private const val KEY_MODEL_ID = "model_id"
+        private const val KEY_AGENT_NAME = "agent_name"
         private const val KEY_GIT_NAME = "git_user_name"
         private const val KEY_GIT_EMAIL = "git_user_email"
         private const val KEY_GIT_TOKEN = "git_github_token"
