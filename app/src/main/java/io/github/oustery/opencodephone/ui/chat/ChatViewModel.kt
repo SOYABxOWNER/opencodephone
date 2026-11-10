@@ -13,6 +13,7 @@ import io.github.oustery.opencodephone.core.model.OcJson
 import io.github.oustery.opencodephone.core.model.PermissionRequest
 import io.github.oustery.opencodephone.core.model.Parts
 import io.github.oustery.opencodephone.core.model.ProviderEntry
+import io.github.oustery.opencodephone.core.model.QuestionRequest
 import io.github.oustery.opencodephone.core.model.ServerEvent
 import io.github.oustery.opencodephone.core.model.Session
 import io.github.oustery.opencodephone.core.model.SessionRevert
@@ -82,6 +83,9 @@ data class ChatUiState(
     val connectedProviders: List<String> = emptyList(),
     val modelSelection: ModelSelection? = null,
     val permission: PermissionRequest? = null,
+    // Pending agent question (`question.asked`, v1.19.5): the agent blocks
+    // on the answer until the user replies or dismisses the dialog.
+    val question: QuestionRequest? = null,
     val showSessions: Boolean = false,
     val showModels: Boolean = false,
     val attachments: List<PendingAttachment> = emptyList(),
@@ -302,13 +306,23 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
         val ticket = endpointEpoch
         val statuses = client.sessionStatuses()
         val permissions = client.pendingPermissions()
+        val questions = try {
+            client.pendingQuestions()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            emptyList()
+        }
         if (ticket != endpointEpoch) return
         _state.update { state ->
             val status = (state.activeSessionId?.let { statuses[it] } as? JsonObject)?.get("type")?.let {
                 (it as? kotlinx.serialization.json.JsonPrimitive)?.content
             }
-            state.copy(busy = status == "busy" || status == "retry",
-                permission = permissions.firstOrNull { it.sessionId == state.activeSessionId })
+            state.copy(
+                busy = status == "busy" || status == "retry",
+                permission = permissions.firstOrNull { it.sessionId == state.activeSessionId },
+                question = questions.lastOrNull { it.sessionId == state.activeSessionId },
+            )
         }
     }
 
@@ -394,6 +408,30 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
 
             event.type == "permission.replied" -> {
                 reconcileStatus()
+            }
+
+            // Agent asks a question through the `question` tool (v1.19.5):
+            // the event properties carry the whole `QuestionV1.Request`.
+            event.type == "question.asked" -> {
+                val request = event.properties?.let { props ->
+                    runCatching {
+                        OcJson.lenient.decodeFromString(QuestionRequest.serializer(), props.toString())
+                    }.getOrNull()
+                }
+                if (request != null && request.sessionId == _state.value.activeSessionId) {
+                    _state.update { it.copy(question = request) }
+                }
+            }
+
+            event.type == "question.replied" || event.type == "question.rejected" -> {
+                val (_, requestId) = OcJson.questionReply(event.properties)
+                _state.update { st ->
+                    if (st.question != null && st.question.id == requestId) {
+                        st.copy(question = null)
+                    } else {
+                        st
+                    }
+                }
             }
         }
     }
@@ -672,6 +710,7 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                         showSessions = false,
                         todos = emptyList(),
                         revertMarker = null,
+                        question = null,
                     )
                 }
                 loadSessionsQuiet()
@@ -936,6 +975,46 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
             } catch (e: Exception) {
                 if (ticket != endpointEpoch) return@launch
                 _state.update { it.copy(error = e.message) }
+            }
+        }
+    }
+
+    /**
+     * Submit the user's answers for the pending question (v1.19.5
+     * `question.asked`). Answers are ordered label lists, one per question.
+     * The dialog closes optimistically; on failure it reopens so the answer
+     * can be retried or dismissed.
+     */
+    fun answerQuestion(answers: List<List<String>>) {
+        val request = _state.value.question ?: return
+        val client = activeClient
+        val ticket = endpointEpoch
+        _state.update { it.copy(question = null) }
+        viewModelScope.launch {
+            try {
+                client.replyQuestion(request.id, answers)
+                if (ticket == endpointEpoch) reconcileStatus(client)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (ticket != endpointEpoch) return@launch
+                _state.update { it.copy(error = e.message, question = request) }
+            }
+        }
+    }
+
+    /** Dismiss the pending question; the agent is told the request was rejected. */
+    fun dismissQuestion() {
+        val request = _state.value.question ?: return
+        val client = activeClient
+        _state.update { it.copy(question = null) }
+        viewModelScope.launch {
+            try {
+                client.rejectQuestion(request.id)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Best effort: a later reconcile reloads still-pending requests.
             }
         }
     }

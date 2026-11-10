@@ -40,6 +40,23 @@ data class ModelSelection(
 )
 
 /**
+ * The OpenCode console account signed in from the app (device flow).
+ * The access token doubles as the `opencode` (Zen) provider API key pushed
+ * to the server by the regular provider-key sync; secrets never leave the
+ * encrypted store and are excluded from the settings backup.
+ */
+data class OpenCodeAccount(
+    val accountId: String,
+    val email: String,
+    val consoleUrl: String,
+    val accessToken: String,
+    val refreshToken: String,
+    val expiresAtMs: Long,
+    val orgId: String? = null,
+    val orgName: String? = null,
+)
+
+/**
  * Encrypted settings storage (Android Keystore-backed).
  * Fails closed if Keystore cannot be opened. Startup offers retry without
  * deleting settings; credentials are never written to a plaintext fallback.
@@ -145,6 +162,45 @@ class SettingsStore(private val context: Context) {
         val current = ProviderKeysCodec.decode(prefs.getString(KEY_PROVIDER_KEYS, "{}") ?: "{}")
         val updated = current - providerId
         edit { it.putString(KEY_PROVIDER_KEYS, ProviderKeysCodec.encode(updated)) }
+    }
+
+    // --------------------------------------------------- OpenCode account
+
+    fun opencodeAccount(): OpenCodeAccount? {
+        val json = prefs.getString(KEY_OPENCODE_ACCOUNT, null)?.ifBlank { null } ?: return null
+        return runCatching {
+            val obj = org.json.JSONObject(json)
+            OpenCodeAccount(
+                accountId = obj.optString("accountId"),
+                email = obj.optString("email"),
+                consoleUrl = obj.optString("consoleUrl", OpenCodeConsoleUrl.DEFAULT),
+                accessToken = obj.optString("accessToken"),
+                refreshToken = obj.optString("refreshToken"),
+                expiresAtMs = obj.optLong("expiresAtMs"),
+                orgId = obj.optString("orgId").ifBlank { null },
+                orgName = obj.optString("orgName").ifBlank { null },
+            )
+        }.getOrNull()?.takeIf { it.accountId.isNotBlank() && it.accessToken.isNotBlank() }
+    }
+
+    fun setOpencodeAccount(account: OpenCodeAccount?) = edit {
+        if (account == null) {
+            it.remove(KEY_OPENCODE_ACCOUNT)
+        } else {
+            it.putString(
+                KEY_OPENCODE_ACCOUNT,
+                org.json.JSONObject()
+                    .put("accountId", account.accountId)
+                    .put("email", account.email)
+                    .put("consoleUrl", account.consoleUrl)
+                    .put("accessToken", account.accessToken)
+                    .put("refreshToken", account.refreshToken)
+                    .put("expiresAtMs", account.expiresAtMs)
+                    .put("orgId", account.orgId.orEmpty())
+                    .put("orgName", account.orgName.orEmpty())
+                    .toString(),
+            )
+        }
     }
 
     // ------------------------------------------------------------- Models
@@ -356,5 +412,11 @@ class SettingsStore(private val context: Context) {
         private const val KEY_DYNAMIC_COLOR = "dynamic_color"
         private const val KEY_SETUP_CHOICE = "setup_choice"
         private const val KEY_SELECTED_PROJECT = "selected_project"
+        private const val KEY_OPENCODE_ACCOUNT = "opencode_account"
     }
+}
+
+/** Default console URL, mirrored here for settings defaults. */
+object OpenCodeConsoleUrl {
+    const val DEFAULT = "https://opencode.ai/console"
 }

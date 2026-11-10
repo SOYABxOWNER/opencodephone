@@ -7,6 +7,7 @@ import io.github.oustery.opencodephone.core.linuxenv.EnvLayout
 import io.github.oustery.opencodephone.core.linuxenv.EnvironmentRuntime
 import io.github.oustery.opencodephone.core.opencode.ConnectionConfig
 import io.github.oustery.opencodephone.core.opencode.OpenCodeClient
+import io.github.oustery.opencodephone.core.opencode.OpenCodeConsoleClient
 import io.github.oustery.opencodephone.core.settings.ServerMode
 import io.github.oustery.opencodephone.core.settings.SetupChoice
 import io.github.oustery.opencodephone.core.settings.SettingsStore
@@ -36,6 +37,9 @@ class AppGraph(context: Application) {
     val appScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     val settings: SettingsStore = SettingsStore(context)
+
+    /** OpenCode console (opencode.ai) client for the account device flow. */
+    val consoleClient = OpenCodeConsoleClient()
 
     val layout: EnvLayout = EnvLayout(context)
 
@@ -134,6 +138,9 @@ class AppGraph(context: Application) {
     suspend fun syncProviderCredentials(target: OpenCodeClient) = withContext(Dispatchers.IO) {
         credentialsLock.lock()
         try {
+            // The console access token doubles as the `opencode` provider key;
+            // refresh it before the push when it is close to expiry.
+            refreshOpencodeAccountToken()
             val cfg = serverConfiguration.value
             val expected = ConnectionConfig(if (cfg.mode == ServerMode.LOCAL) "127.0.0.1" else cfg.host,
                 cfg.port, cfg.username, cfg.password)
@@ -153,6 +160,31 @@ class AppGraph(context: Application) {
         } finally { credentialsLock.unlock() }
     }
 
+    /**
+     * The console access token expires; refresh it when it is within five
+     * minutes of expiry so the pushed `opencode` provider key stays valid.
+     * A failed refresh keeps the stored token (the sync still pushes it and
+     * the account screen surfaces the error on the next attempt).
+     */
+    private suspend fun refreshOpencodeAccountToken() {
+        val account = settings.opencodeAccount() ?: return
+        if (account.expiresAtMs > System.currentTimeMillis() + 5 * 60_000L) return
+        val refreshed = try {
+            consoleClient.refresh(account.refreshToken)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        } ?: return
+        val updated = account.copy(
+            accessToken = refreshed.accessToken,
+            refreshToken = refreshed.refreshToken,
+            expiresAtMs = System.currentTimeMillis() + refreshed.expiresInMs,
+        )
+        settings.setOpencodeAccount(updated)
+        settings.setProviderKey(OPENCODE_ACCOUNT_PROVIDER_ID, updated.accessToken)
+    }
+
     fun refreshClient() {
         client = OpenCodeClient(config = buildClientConfig(settings))
         _serverConfiguration.value = settings.effectiveServerConfig()
@@ -168,6 +200,12 @@ class AppGraph(context: Application) {
     }
 
     companion object {
+        /**
+         * Provider id the signed-in console token is pushed under; upstream
+         * reads it from `auth.json["opencode"]` to unlock the paid Zen models.
+         */
+        const val OPENCODE_ACCOUNT_PROVIDER_ID = "opencode"
+
         fun buildClientConfig(settings: SettingsStore) = with(settings.effectiveServerConfig()) {
             if (mode == ServerMode.REMOTE) {
                 ConnectionConfig(host, port, username, password)

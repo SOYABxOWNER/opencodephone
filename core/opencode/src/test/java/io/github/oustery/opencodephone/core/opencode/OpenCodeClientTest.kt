@@ -371,6 +371,62 @@ class OpenCodeClientTest {
         val event = OcClientJson.decodeEvent("""{"type":"server.connected","properties":{"x":1}}""")
         assertEquals("server.connected", event.type)
     }
+
+    @Test
+    fun `permission reply uses the pinned v1 ReplyBody contract`() = runBlocking {
+        // The v1.19.5 route validates `{reply: "once"|"always"|"reject"}`;
+        // the earlier `{response, remember}` shape failed payload validation.
+        server.enqueue(MockResponse().setResponseCode(200).setBody("true"))
+        client.respondPermission("ses_1", "per_1", "once")
+        val recorded = server.takeRequest()
+        assertEquals("/session/ses_1/permissions/per_1", recorded.path)
+        assertEquals("POST", recorded.method)
+        val body = recorded.body.readUtf8()
+        assertTrue(body.contains("\"reply\":\"once\""))
+        assertFalse(body.contains("\"response\""))
+        assertFalse(body.contains("\"remember\""))
+    }
+
+    @Test
+    fun `parses pending question requests`() = runBlocking {
+        server.enqueue(
+            MockResponse().setBody(
+                """[{"id":"que_1","sessionID":"ses_1","tool":{"messageID":"msg_1","callID":"call_1"},
+                    "questions":[{"question":"Use which database?","header":"Database","multiple":false,
+                    "options":[{"label":"SQLite","description":"embedded"},{"label":"Postgres","description":"server"}]}]}]""",
+            ),
+        )
+        val requests = client.pendingQuestions()
+        assertEquals(1, requests.size)
+        assertEquals("que_1", requests[0].id)
+        assertEquals("ses_1", requests[0].sessionId)
+        assertEquals(1, requests[0].questions.size)
+        assertEquals("Database", requests[0].questions[0].header)
+        assertEquals(2, requests[0].questions[0].options.size)
+        assertEquals("SQLite", requests[0].questions[0].options[0].label)
+        assertEquals("embedded", requests[0].questions[0].options[0].description)
+        val recorded = server.takeRequest()
+        assertEquals("/question", recorded.path)
+    }
+
+    @Test
+    fun `question reply sends ordered label arrays`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("true"))
+        client.replyQuestion("que_1", listOf(listOf("SQLite"), listOf("A", "B")))
+        val recorded = server.takeRequest()
+        assertEquals("/question/que_1/reply", recorded.path)
+        assertEquals("POST", recorded.method)
+        assertEquals("""{"answers":[["SQLite"],["A","B"]]}""", recorded.body.readUtf8())
+    }
+
+    @Test
+    fun `question reject posts to the reject route`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("true"))
+        client.rejectQuestion("que_2")
+        val recorded = server.takeRequest()
+        assertEquals("/question/que_2/reject", recorded.path)
+        assertEquals("POST", recorded.method)
+    }
 }
 
 /** Small indirection so the test exercises the same Json used in production. */

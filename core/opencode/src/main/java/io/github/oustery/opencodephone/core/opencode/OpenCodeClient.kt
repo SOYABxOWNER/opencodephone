@@ -9,6 +9,7 @@ import io.github.oustery.opencodephone.core.model.MessageWithParts
 import io.github.oustery.opencodephone.core.model.OcJson
 import io.github.oustery.opencodephone.core.model.PathInfo
 import io.github.oustery.opencodephone.core.model.ProviderListResponse
+import io.github.oustery.opencodephone.core.model.QuestionRequest
 import io.github.oustery.opencodephone.core.model.ServerEvent
 import io.github.oustery.opencodephone.core.model.Session
 import io.github.oustery.opencodephone.core.model.SessionFileDiff
@@ -392,17 +393,57 @@ class OpenCodeClient(
         execute("POST", "/session/${q(sessionId)}/abort", buildJsonObject { })
     }
 
+    /**
+     * Respond to a permission request (`POST /session/:id/permissions/:id`).
+     * Contract verified at the pinned `sst/opencode` tag v1.19.5
+     * (`PermissionV1.ReplyBody`): the body is
+     * `{reply: "once" | "always" | "reject"}` — the earlier `{response, …}`
+     * shape fails payload validation on the real server.
+     */
     suspend fun respondPermission(
         sessionId: String,
         permissionId: String,
         response: String,
-        remember: Boolean? = null,
     ) {
-        val body = buildJsonObject {
-            put("response", response)
-            if (remember != null) put("remember", remember)
-        }
+        val body = buildJsonObject { put("reply", response) }
         execute("POST", "/session/${q(sessionId)}/permissions/${q(permissionId)}", body)
+    }
+
+    // ------------------------------------------------------------- Questions
+
+    /**
+     * Pending agent question requests (v1.19.5 `GET /question`, pinned
+     * `QuestionV1.Request[]`): the agent asks through the `question` tool and
+     * blocks until the user replies or rejects the request.
+     */
+    suspend fun pendingQuestions(): List<QuestionRequest> {
+        val text = execute("GET", "/question") ?: return emptyList()
+        val arr = json.parseToJsonElement(text) as? kotlinx.serialization.json.JsonArray ?: return emptyList()
+        return arr.mapNotNull { el ->
+            runCatching { json.decodeFromString(QuestionRequest.serializer(), el.toString()) }.getOrNull()
+        }
+    }
+
+    /**
+     * Answer a question request (`POST /question/:id/reply`, pinned
+     * `QuestionV1.Reply`). Each inner list holds the selected labels for the
+     * question at the same index; an empty list leaves that question
+     * unanswered (the server reports it back to the agent as such).
+     */
+    suspend fun replyQuestion(requestId: String, answers: List<List<String>>) {
+        val body = buildJsonObject {
+            put("answers", buildJsonArray {
+                answers.forEach { selected ->
+                    add(buildJsonArray { selected.forEach { label -> add(label) } })
+                }
+            })
+        }
+        execute("POST", "/question/${q(requestId)}/reply", body)
+    }
+
+    /** Dismiss a question request without answering (`POST /question/:id/reject`). */
+    suspend fun rejectQuestion(requestId: String) {
+        execute("POST", "/question/${q(requestId)}/reject", buildJsonObject { })
     }
 
     // -------------------------------------------------------- Config & model
@@ -415,6 +456,57 @@ class OpenCodeClient(
 
     suspend fun listAgents(): List<AgentInfo> =
         executeParsed("GET", "/agent", serializer = ListSerializer(AgentInfo.serializer()))
+
+    /**
+     * Auth methods the server exposes per provider (`GET /provider/auth`,
+     * pinned v1.19.5 `ProviderAuth.Methods` = `Record<providerID, Method[]>`).
+     * An empty map means the server has no interactive auth surface.
+     */
+    suspend fun providerAuthMethods(): Map<String, List<io.github.oustery.opencodephone.core.model.ProviderAuthMethod>> {
+        val text = execute("GET", "/provider/auth") ?: return emptyMap()
+        val obj = json.parseToJsonElement(text) as? JsonObject ?: return emptyMap()
+        return obj.entries.mapNotNull { (providerId, methodsEl) ->
+            val arr = methodsEl as? kotlinx.serialization.json.JsonArray ?: return@mapNotNull null
+            val methods = arr.mapNotNull { el ->
+                runCatching {
+                    json.decodeFromString(io.github.oustery.opencodephone.core.model.ProviderAuthMethod.serializer(), el.toString())
+                }.getOrNull()
+            }
+            if (methods.isEmpty()) null else providerId to methods
+        }.toMap()
+    }
+
+    /**
+     * Start an OAuth authorization for a provider method
+     * (`POST /provider/:id/oauth/authorize`, pinned
+     * `ProviderAuth.Authorization`). A null result means the flow finished
+     * without a redirect (credentials were stored server-side directly).
+     */
+    suspend fun providerOAuthAuthorize(
+        providerId: String,
+        methodIndex: Int,
+        inputs: Map<String, String>,
+    ): io.github.oustery.opencodephone.core.model.ProviderAuthorization? {
+        val body = buildJsonObject {
+            put("method", methodIndex)
+            if (inputs.isNotEmpty()) {
+                putJsonObject("inputs") { inputs.forEach { (key, value) -> put(key, value) } }
+            }
+        }
+        val text = execute("POST", "/provider/${q(providerId)}/oauth/authorize", body) ?: return null
+        return runCatching {
+            json.decodeFromString(io.github.oustery.opencodephone.core.model.ProviderAuthorization.serializer(), text)
+        }.getOrNull()
+    }
+
+    /** Complete an OAuth flow (`POST /provider/:id/oauth/callback`). */
+    suspend fun providerOAuthCallback(providerId: String, methodIndex: Int, code: String? = null) {
+        val body = buildJsonObject {
+            put("method", methodIndex)
+            if (!code.isNullOrBlank()) put("code", code)
+        }
+        execute("POST", "/provider/${q(providerId)}/oauth/callback", body)
+    }
 
     /** Store provider credentials, e.g. `{"type":"api","key":"..."}`. */
     suspend fun setProviderAuth(providerId: String, credentials: JsonObject) {
