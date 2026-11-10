@@ -21,7 +21,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilterChip
@@ -55,6 +57,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.oustery.opencodephone.AppGraph
@@ -68,6 +71,7 @@ import io.github.oustery.opencodephone.core.designsystem.OcStatusChip
 import io.github.oustery.opencodephone.core.designsystem.OcToggleableRow
 import androidx.compose.ui.semantics.Role
 import io.github.oustery.opencodephone.core.model.ProviderAuthPrompt
+import io.github.oustery.opencodephone.core.linuxenv.ServerState
 import io.github.oustery.opencodephone.core.settings.ServerMode
 import io.github.oustery.opencodephone.ui.common.VmFactory
 
@@ -102,6 +106,8 @@ fun SettingsScreen(graph: AppGraph) {
         if (uri != null) vm.onImportPicked(uri)
     }
     var confirmClear by remember { mutableStateOf<String?>(null) }
+    // Provider-key removal asks for confirmation first (UI audit B2).
+    var pendingKeyRemoval by remember { mutableStateOf<String?>(null) }
 
     Column(modifier = Modifier.fillMaxSize().nestedScroll(scrollBehavior.nestedScrollConnection)) {
         LargeFlexibleTopAppBar(
@@ -213,12 +219,28 @@ fun SettingsScreen(graph: AppGraph) {
                             OutlinedButton(onClick = vm::cancelServerChanges, enabled = state.serverDirty) { Text(stringResource(R.string.action_cancel)) }
                         }
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(onClick = { vm.testConnection() }, enabled = !state.serverDirty) {
+                            OutlinedButton(
+                                onClick = { vm.testConnection() },
+                                enabled = !state.serverDirty && !state.connectionTesting,
+                            ) {
+                                // Inline progress while the health check runs
+                                // (UI audit B4); the button locks for the test.
+                                if (state.connectionTesting) {
+                                    CircularWavyProgressIndicator(modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                }
                                 Text(stringResource(R.string.settings_server_test))
                             }
                             OcStatusChip(
                                 text = state.serverStateLabel.ifEmpty { "—" },
-                                tone = OcChipTone.NEUTRAL,
+                                tone = when (state.serverState) {
+                                    // Chip tone follows the real server state
+                                    // (UI audit B4) instead of a permanent
+                                    // neutral label.
+                                    is ServerState.Running -> OcChipTone.PRIMARY
+                                    is ServerState.Failed -> OcChipTone.ERROR
+                                    else -> OcChipTone.NEUTRAL
+                                },
                             )
                         }
                         if (state.server.mode == ServerMode.LOCAL) {
@@ -339,7 +361,10 @@ fun SettingsScreen(graph: AppGraph) {
                                     fontFamily = AppFonts.Code,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
-                                TextButton(onClick = { vm.removeProviderKey(key.providerId) }) {
+                                // Deleting credentials is destructive: confirm
+                                // first and paint the action in the error tone
+                                // (UI audit B2).
+                                TextButton(onClick = { pendingKeyRemoval = key.providerId }) {
                                     Text(stringResource(R.string.action_delete))
                                 }
                             }
@@ -550,6 +575,27 @@ fun SettingsScreen(graph: AppGraph) {
             known = KNOWN_PROVIDERS,
             onSave = { id, key -> vm.saveProviderKey(id, key) },
             onDismiss = { vm.showAddProvider(false) },
+        )
+    }
+    pendingKeyRemoval?.let { providerId ->
+        // Destructive action confirmation (UI audit B2): erasing stored
+        // credentials must never be a single tap.
+        AlertDialog(
+            onDismissRequest = { pendingKeyRemoval = null },
+            title = { Text(stringResource(R.string.settings_providers_remove_title)) },
+            text = { Text(stringResource(R.string.settings_providers_remove_warning, providerId)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingKeyRemoval = null
+                        vm.removeProviderKey(providerId)
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                ) { Text(stringResource(R.string.action_delete)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingKeyRemoval = null }) { Text(stringResource(R.string.action_cancel)) }
+            },
         )
     }
     state.accountAuth?.let { auth ->
@@ -865,35 +911,38 @@ private fun AddProviderDialog(
         title = { Text(stringResource(R.string.settings_providers_add)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (!custom) {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        // Every known provider as a selectable chip — no truncation
-                        // (M3E audit E-007: take(8) made azure/amazon-bedrock/
-                        // github-copilot unreachable from the list).
-                        FlowRow(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
-                            known.forEach { id ->
-                                FilterChip(
-                                    selected = providerId == id,
-                                    onClick = {
-                                        providerId = id
-                                        custom = true
-                                    },
-                                    label = { Text(id) },
-                                )
-                            }
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // Every known provider as a selectable chip — no truncation
+                    // (M3E audit E-007) — and the chips stay visible the whole
+                    // time (UI audit B3): picking one used to swap the whole
+                    // picker for a raw-ID field, which read like the choice was
+                    // undone and forced the user through the custom path.
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        known.forEach { id ->
+                            FilterChip(
+                                selected = !custom && providerId == id,
+                                onClick = {
+                                    providerId = id
+                                    custom = false
+                                },
+                                label = { Text(id) },
+                            )
                         }
-                        Text(
-                            stringResource(R.string.settings_providers_custom),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.clickable { custom = true }.padding(vertical = 10.dp),
-                        )
                     }
-                } else {
+                    Text(
+                        stringResource(R.string.settings_providers_custom),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (custom) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.clickable { custom = true }.padding(vertical = 10.dp),
+                    )
+                }
+                if (custom) {
+                    // The raw-ID field only appears when the user explicitly
+                    // opts out of the known list (UI audit B3).
                     OutlinedTextField(
                         value = providerId,
                         onValueChange = { providerId = it },
@@ -918,7 +967,7 @@ private fun AddProviderDialog(
         confirmButton = {
             Button(
                 onClick = { onSave(providerId, apiKey) },
-                enabled = providerId.isNotBlank() && apiKey.isNotBlank() && custom,
+                enabled = providerId.isNotBlank() && apiKey.isNotBlank(),
             ) {
                 Text(stringResource(R.string.action_save))
             }

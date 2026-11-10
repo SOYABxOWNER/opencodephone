@@ -927,6 +927,12 @@ private fun QuestionDialog(
     val customs = remember(request.id) {
         List(request.questions.size) { mutableStateOf("") }
     }
+    // "Answer" stays disabled until every question has an explicit answer —
+    // a picked option or typed custom text (UI audit B1): an empty reply to a
+    // single-choice question is useless to the agent. Skip remains available.
+    val canAnswer = request.questions.indices.all { index ->
+        customs[index].value.isNotBlank() || selections[index].value.isNotEmpty()
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -1010,21 +1016,31 @@ private fun QuestionDialog(
                         }
                     }
                 }
+                if (!canAnswer) {
+                    Text(
+                        stringResource(R.string.chat_question_answer_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         },
         confirmButton = {
-            TextButton(onClick = {
-                val answers = request.questions.mapIndexed { index, info ->
-                    val custom = customs[index].value.trim()
-                    val labels = selections[index].value.mapNotNull { info.options.getOrNull(it)?.label }
-                    when {
-                        custom.isNotBlank() && info.multiple == true -> labels + custom
-                        custom.isNotBlank() -> listOf(custom)
-                        else -> labels
+            TextButton(
+                onClick = {
+                    val answers = request.questions.mapIndexed { index, info ->
+                        val custom = customs[index].value.trim()
+                        val labels = selections[index].value.mapNotNull { info.options.getOrNull(it)?.label }
+                        when {
+                            custom.isNotBlank() && info.multiple == true -> labels + custom
+                            custom.isNotBlank() -> listOf(custom)
+                            else -> labels
+                        }
                     }
-                }
-                onAnswer(answers)
-            }) {
+                    onAnswer(answers)
+                },
+                enabled = canAnswer,
+            ) {
                 Text(stringResource(R.string.chat_question_answer))
             }
         },

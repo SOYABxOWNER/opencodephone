@@ -51,6 +51,7 @@
     <string name="chat_question_multi_hint">Можно выбрать несколько</string>
     <string name="chat_question_custom">Свой вариант…</string>
     <string name="chat_question_answer">Ответить</string>
+    <string name="chat_question_answer_hint">Ответьте на каждый вопрос — выберите вариант или введите свой.</string>
     <string name="chat_question_skip">Пропустить</string>
     <string name="chat_input_hint">Спросите агента…</string>
     <string name="chat_attach">Прикрепить файл</string>
@@ -138,6 +139,8 @@
     <string name="settings_providers_hint">API-ключи хранятся шифрованно и передаются серверу opencode при подключении.</string>
     <string name="settings_providers_empty">Ключи провайдеров не настроены.</string>
     <string name="settings_providers_add">Добавить ключ</string>
+    <string name="settings_providers_remove_title">Удалить ключ провайдера</string>
+    <string name="settings_providers_remove_warning">Сохранённый API-ключ для %1$s будет удалён с этого устройства. Его можно добавить снова.</string>
     <string name="settings_providers_custom">Свой провайдер…</string>
     <string name="settings_providers_id">ID провайдера</string>
     <string name="settings_providers_key">API-ключ</string>

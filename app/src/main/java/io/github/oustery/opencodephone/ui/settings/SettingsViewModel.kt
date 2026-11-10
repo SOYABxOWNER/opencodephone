@@ -34,9 +34,11 @@ data class SettingsUiState(
     val serverPortText: String = "4096",
     val providerSyncAllowed: Boolean = false,
     val connectionTest: String? = null,
+    val connectionTesting: Boolean = false,
     val serverDirty: Boolean = false,
     val bootstrap: BootstrapState = BootstrapState(),
     val serverStateLabel: String = "",
+    val serverState: ServerState = ServerState.Stopped,
     val serverError: String? = null,
     val serverLog: String = "",
     val legacyPlaintextSettings: Boolean = false,
@@ -106,6 +108,7 @@ class SettingsViewModel(private val graph: AppGraph) : ViewModel() {
                 _state.update {
                     it.copy(
                         serverError = (serverState as? ServerState.Failed)?.message,
+                        serverState = serverState,
                         serverStateLabel = when (serverState) {
                             is ServerState.Running -> "opencode serve :${serverState.port}"
                             is ServerState.Starting -> "starting…"
@@ -196,8 +199,8 @@ class SettingsViewModel(private val graph: AppGraph) : ViewModel() {
     }
 
     fun testConnection() {
-        if (_state.value.serverDirty) return
-        _state.update { it.copy(connectionTest = "…") }
+        if (_state.value.serverDirty || _state.value.connectionTesting) return
+        _state.update { it.copy(connectionTest = "…", connectionTesting = true) }
         viewModelScope.launch {
             val tempClient = OpenCodeClient(config = AppGraph.buildClientConfig(settings))
             try {
@@ -231,6 +234,8 @@ class SettingsViewModel(private val graph: AppGraph) : ViewModel() {
                 _state.update {
                     it.copy(connectionTest = "Failed: ${e.message?.take(500)}")
                 }
+            } finally {
+                _state.update { it.copy(connectionTesting = false) }
             }
         }
     }

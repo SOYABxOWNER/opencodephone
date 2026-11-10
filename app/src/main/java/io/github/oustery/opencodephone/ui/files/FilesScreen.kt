@@ -107,6 +107,7 @@ fun FilesScreen(graph: AppGraph) {
                 GitBar(
                     branch = branch,
                     changes = state.gitChanges,
+                    busy = state.busy != null,
                     onOpenCommit = { vm.showCommit(true) },
                     onPull = { vm.pull() },
                     onPush = { vm.push() },
@@ -291,7 +292,7 @@ fun FilesScreen(graph: AppGraph) {
 }
 
 @Composable
-private fun GitBar(branch: String, changes: Int, onOpenCommit: () -> Unit, onPull: () -> Unit, onPush: () -> Unit) {
+private fun GitBar(branch: String, changes: Int, busy: Boolean, onOpenCommit: () -> Unit, onPull: () -> Unit, onPush: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
         shape = MaterialTheme.shapes.medium,
@@ -312,10 +313,12 @@ private fun GitBar(branch: String, changes: Int, onOpenCommit: () -> Unit, onPul
                 Button(onClick = onOpenCommit, enabled = changes > 0) {
                     Text(stringResource(R.string.git_commit))
                 }
-                OutlinedButton(onClick = onPull) {
+                // Pull/Push lock while a git operation runs (UI audit B5): a
+                // second concurrent launch would race the same worktree.
+                OutlinedButton(onClick = onPull, enabled = !busy) {
                     Text(stringResource(R.string.git_pull))
                 }
-                OutlinedButton(onClick = onPush) {
+                OutlinedButton(onClick = onPush, enabled = !busy) {
                     Text(stringResource(R.string.git_push))
                 }
             }

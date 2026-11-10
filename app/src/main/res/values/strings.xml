@@ -51,6 +51,7 @@
     <string name="chat_question_multi_hint">Select all that apply</string>
     <string name="chat_question_custom">Custom answer…</string>
     <string name="chat_question_answer">Answer</string>
+    <string name="chat_question_answer_hint">Answer every question — pick an option or type your own.</string>
     <string name="chat_question_skip">Skip</string>
     <string name="chat_input_hint">Ask the agent…</string>
     <string name="chat_attach">Attach file</string>
@@ -165,6 +166,8 @@
     <string name="settings_providers_hint">API keys are stored encrypted and injected into the opencode server on connect.</string>
     <string name="settings_providers_empty">No provider keys configured.</string>
     <string name="settings_providers_add">Add provider key</string>
+    <string name="settings_providers_remove_title">Remove provider key</string>
+    <string name="settings_providers_remove_warning">The stored API key for %1$s will be deleted from this device. You can add it back later.</string>
     <string name="settings_providers_custom">Custom provider…</string>
     <string name="settings_providers_id">Provider ID</string>
     <string name="settings_providers_key">API key</string>
