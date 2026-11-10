@@ -40,6 +40,12 @@
     <string name="chat_offline_body">Сервер OpenCode не запущен. Дождитесь старта окружения или проверьте настройки.</string>
     <string name="chat_offline_settings">Проверить настройки</string>
     <string name="chat_error_title">Ошибка соединения</string>
+    <!-- Понятные заголовки частых категорий сбоев (UI аудит C2);
+         сырой текст исключения идёт следом в баннере как деталь. -->
+    <string name="chat_error_timeout_title">Сервер не ответил вовремя</string>
+    <string name="chat_error_connect_title">Не удалось связаться с сервером OpenCode</string>
+    <string name="chat_error_auth_title">Ошибка авторизации (HTTP 401)</string>
+    <string name="chat_error_access_title">Доступ запрещён (HTTP 403)</string>
     <string name="chat_connected">opencode %1$s</string>
     <string name="chat_empty_title">Новый диалог</string>
     <string name="chat_empty_body">Попросите агента объяснить код, добавить функцию или исправить ошибку — он редактирует файлы и выполняет команды в вашей рабочей папке.</string>
@@ -89,6 +95,15 @@
     <string name="chat_todo_done">Готово</string>
     <string name="chat_todo_cancelled">Отменено</string>
 
+    <!-- Локализованные статусы инструментов и диффов (UI аудит C1) -->
+    <string name="chat_status_pending">Ожидает</string>
+    <string name="chat_status_running">Выполняется</string>
+    <string name="chat_status_completed">Готово</string>
+    <string name="chat_status_error">Ошибка</string>
+    <string name="chat_diff_added">Добавлен</string>
+    <string name="chat_diff_modified">Изменён</string>
+    <string name="chat_diff_deleted">Удалён</string>
+
     <!-- Детали сбоя инструмента (функциональный аудит F-012) -->
     <string name="chat_tool_error">Подробности ошибки</string>
 
@@ -117,6 +132,11 @@
     <string name="files_share">Поделиться</string>
     <string name="files_preview">Просмотр</string>
     <string name="files_preview_failed">Просмотр недоступен: %1$s</string>
+    <!-- Причины отказа предпросмотра (UI аудит C5); обёрнуты в files_preview_failed. -->
+    <string name="files_preview_too_large">файл больше 10 МБ</string>
+    <string name="files_preview_undecodable">не удалось декодировать изображение</string>
+    <string name="files_preview_unsupported">для этого типа файла нет предпросмотра</string>
+    <string name="files_preview_read_failed">не удалось прочитать файл</string>
 
     <!-- Terminal -->
     <string name="terminal_env_not_ready">Среда Linux ещё не установлена. Сначала завершите настройку на главном экране.</string>
@@ -230,6 +250,8 @@
     <string name="state_collapsed">Свёрнуто</string>
     <string name="chat_reasoning">Рассуждение</string>
     <string name="chat_tool_output">Вывод инструмента</string>
+    <!-- Уведомление об усечении предпросмотра вывода/ошибки инструмента (UI аудит C3). -->
+    <string name="chat_tool_output_truncated">… показаны первые %1$d символов</string>
     <string name="settings_server_help">Как работает управление сервером</string>
     <string name="bootstrap_choice_title">Как вы хотите использовать OpenCode?</string>
     <string name="bootstrap_choice_local">Установить локальное окружение</string>

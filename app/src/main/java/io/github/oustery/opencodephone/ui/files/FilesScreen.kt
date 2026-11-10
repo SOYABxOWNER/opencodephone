@@ -571,11 +571,18 @@ private fun EditorDialog(
 
 // ------------------------------------------------------------- Preview
 
+/**
+ * Machine-readable preview failure causes; the dialog localizes them (UI
+ * audit C5) — loadPreview runs off the main thread, so it cannot touch
+ * string resources itself.
+ */
+private enum class PreviewFailure { TooLarge, Undecodable, UnsupportedType, ReadError }
+
 private sealed interface PreviewState {
     data object Loading : PreviewState
     data class Image(val bitmap: android.graphics.Bitmap) : PreviewState
     data class Html(val html: String) : PreviewState
-    data class Failed(val reason: String) : PreviewState
+    data class Failed(val reason: PreviewFailure, val detail: String? = null) : PreviewState
 }
 
 private val PREVIEW_IMAGE_EXTENSIONS = setOf("png", "jpg", "jpeg", "gif", "webp", "bmp")
@@ -608,18 +615,18 @@ private fun loadPreview(file: java.io.File): PreviewState {
                 }
                 out.toByteArray()
             }
-        } ?: return PreviewState.Failed("File is larger than 10 MB")
+        } ?: return PreviewState.Failed(PreviewFailure.TooLarge)
         when (ext) {
             in PREVIEW_IMAGE_EXTENSIONS -> {
                 val bitmap = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                    ?: return PreviewState.Failed("Cannot decode the image")
+                    ?: return PreviewState.Failed(PreviewFailure.Undecodable)
                 PreviewState.Image(bitmap)
             }
             "html", "htm" -> PreviewState.Html(bytes.toString(Charsets.UTF_8))
-            else -> PreviewState.Failed("No preview for this file type")
+            else -> PreviewState.Failed(PreviewFailure.UnsupportedType)
         }
     } catch (e: Exception) {
-        PreviewState.Failed(e.message ?: "Preview failed")
+        PreviewState.Failed(PreviewFailure.ReadError, e.message)
     }
 }
 
@@ -678,11 +685,29 @@ private fun PreviewDialog(entry: FileEntry, onDismiss: () -> Unit) {
                             verticalArrangement = Arrangement.Center,
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
+                            // Cause localized in the dialog; a raw exception
+                            // detail, when present, follows as the secondary
+                            // line (UI audit C5).
+                            val reasonText = stringResource(
+                                when (s.reason) {
+                                    PreviewFailure.TooLarge -> R.string.files_preview_too_large
+                                    PreviewFailure.Undecodable -> R.string.files_preview_undecodable
+                                    PreviewFailure.UnsupportedType -> R.string.files_preview_unsupported
+                                    PreviewFailure.ReadError -> R.string.files_preview_read_failed
+                                },
+                            )
                             Text(
-                                stringResource(R.string.files_preview_failed, s.reason),
+                                stringResource(R.string.files_preview_failed, reasonText),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                            s.detail?.let {
+                                Text(
+                                    it,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {

@@ -60,6 +60,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,6 +72,7 @@ import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
@@ -290,6 +292,24 @@ fun OcDisclosure(
 }
 
 /**
+ * True when the system-wide animator duration scale is 0 (developer options
+ * or the accessibility "remove animations" switch): infinite animations —
+ * the emblem morph and the skeleton pulse — collapse to a static state
+ * without losing their meaning (UI audit C4).
+ */
+@Composable
+fun rememberReducedMotion(): Boolean {
+    val context = LocalContext.current
+    return remember {
+        android.provider.Settings.Global.getFloat(
+            context.contentResolver,
+            android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
+            1f,
+        ) == 0f
+    }
+}
+
+/**
  * Expressive empty-state emblem (M3E audit E-015): the icon sits inside a
  * MaterialShapes container. With `animated = true` the container slowly
  * morphs between two shapes. Intended only for balanced empty states —
@@ -312,7 +332,9 @@ fun OcShapeEmblem(
     tint: Color = MaterialTheme.colorScheme.onSurfaceVariant,
 ) {
     Box(modifier = modifier.size(size), contentAlignment = Alignment.Center) {
-        if (animated) {
+        // With the system animator scale at 0 the morph collapses to the
+        // static shape — same emblem, no infinite animation (UI audit C4).
+        if (animated && !rememberReducedMotion()) {
             val morph = remember { Morph(MaterialShapes.Cookie9Sided, MaterialShapes.Sunny) }
             val progress by rememberInfiniteTransition(label = "shape-emblem-morph").animateFloat(
                 initialValue = 0f,
@@ -355,20 +377,27 @@ fun OcSkeletonRow(
     height: Dp = 14.dp,
     widthFraction: Float = 1f,
 ) {
-    val pulse by rememberInfiniteTransition(label = "skeleton-pulse").animateFloat(
-        initialValue = 0.35f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 900, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "skeleton-pulse-alpha",
-    )
+    // Reduced motion: a static half-transparent placeholder instead of the
+    // infinite pulse (UI audit C4). The name avoids shadowing
+    // GraphicsLayerScope.alpha inside the layer block below.
+    val pulseAlpha: State<Float> = if (rememberReducedMotion()) {
+        remember { mutableStateOf(0.7f) }
+    } else {
+        rememberInfiniteTransition(label = "skeleton-pulse").animateFloat(
+            initialValue = 0.35f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 900, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "skeleton-pulse-alpha",
+        )
+    }
     Surface(
         modifier = modifier
             .fillMaxWidth(widthFraction)
             .height(height)
-            .graphicsLayer { alpha = pulse }
+            .graphicsLayer { alpha = pulseAlpha.value }
             .clearAndSetSemantics { },
         shape = MaterialTheme.shapes.small,
         color = MaterialTheme.colorScheme.surfaceContainerHighest,

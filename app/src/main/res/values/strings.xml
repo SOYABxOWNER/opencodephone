@@ -40,6 +40,12 @@
     <string name="chat_offline_body">The OpenCode server is not running. Wait for the environment to start or check Settings.</string>
     <string name="chat_offline_settings">Check settings</string>
     <string name="chat_error_title">Connection error</string>
+    <!-- Friendly headlines for frequent failure categories (UI audit C2);
+         the raw exception text follows in the banner as the detail line. -->
+    <string name="chat_error_timeout_title">The server did not respond in time</string>
+    <string name="chat_error_connect_title">Could not reach the OpenCode server</string>
+    <string name="chat_error_auth_title">Authorization failed (HTTP 401)</string>
+    <string name="chat_error_access_title">Access denied (HTTP 403)</string>
     <string name="chat_connected">opencode %1$s</string>
     <string name="chat_empty_title">New conversation</string>
     <string name="chat_empty_body">Ask the agent to explain the codebase, add a feature or fix a bug — it edits files and runs commands inside your workspace.</string>
@@ -103,6 +109,15 @@
     <string name="chat_todo_done">Completed</string>
     <string name="chat_todo_cancelled">Cancelled</string>
 
+    <!-- Localized tool/diff status chips (UI audit C1) -->
+    <string name="chat_status_pending">Pending</string>
+    <string name="chat_status_running">Running</string>
+    <string name="chat_status_completed">Completed</string>
+    <string name="chat_status_error">Error</string>
+    <string name="chat_diff_added">Added</string>
+    <string name="chat_diff_modified">Modified</string>
+    <string name="chat_diff_deleted">Deleted</string>
+
     <!-- Tool failure details (functional audit F-012) -->
     <string name="chat_tool_error">Error details</string>
 
@@ -134,6 +149,11 @@
     <string name="files_share">Share</string>
     <string name="files_preview">Preview</string>
     <string name="files_preview_failed">Preview is not available: %1$s</string>
+    <!-- Preview failure causes (UI audit C5); wrapped by files_preview_failed. -->
+    <string name="files_preview_too_large">the file is larger than 10 MB</string>
+    <string name="files_preview_undecodable">the image could not be decoded</string>
+    <string name="files_preview_unsupported">no preview for this file type</string>
+    <string name="files_preview_read_failed">the file could not be read</string>
     <string name="files_rename_hint">New name (no path separators)</string>
     <string name="files_delete_title">Delete %1$s?</string>
     <string name="files_delete_file_body">This permanently removes the file from the workspace. The change cannot be undone here.</string>
@@ -257,6 +277,8 @@
     <string name="state_collapsed">Collapsed</string>
     <string name="chat_reasoning">Reasoning</string>
     <string name="chat_tool_output">Tool output</string>
+    <!-- Truncation notice for tool output/error previews (UI audit C3). -->
+    <string name="chat_tool_output_truncated">… showing the first %1$d characters</string>
     <string name="settings_server_help">How server controls work</string>
     <string name="settings_backup_header">Settings backup</string>
     <string name="settings_backup_hint">Exports non-secret settings — server address (without the password), Git identity (without the token), model choice, appearance and the onboarding choice — into a JSON file. Import replaces those settings; secrets are never exported, imported or overwritten.</string>

@@ -25,6 +25,8 @@ import io.github.oustery.opencodephone.core.designsystem.OcDisclosure
 import io.github.oustery.opencodephone.core.designsystem.AppMessageShapes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -43,14 +45,17 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
@@ -64,12 +69,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -95,7 +102,7 @@ import io.github.oustery.opencodephone.core.model.UiPart
 import io.github.oustery.opencodephone.ui.common.VmFactory
 import java.net.URLDecoder
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class, ExperimentalLayoutApi::class)
 @Composable
 fun ChatScreen(graph: AppGraph, onOpenSettings: () -> Unit) {
     val vm: ChatViewModel = viewModel(factory = VmFactory.of { ChatViewModel(graph) })
@@ -267,9 +274,6 @@ private fun ChatTimeline(vm: ChatViewModel, state: ChatUiState) {
             if (listState.firstVisibleItemIndex <= 1 && !listState.isScrollInProgress) listState.scrollToItem(0)
         }
         if (state.busy) LinearWavyProgressIndicator(modifier = Modifier.fillMaxWidth())
-        Text(stringResource(R.string.chat_connected, state.version),
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
         // Agent task plan for the active session (functional audit F-010).
         if (state.todos.isNotEmpty()) {
@@ -326,14 +330,28 @@ private fun ChatTimeline(vm: ChatViewModel, state: ChatUiState) {
                         } else if (request.title.isNotBlank()) {
                             Text(request.title, style = MaterialTheme.typography.bodySmall)
                         }
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            TextButton(onClick = { vm.respondPermission("once") }) {
+                        // Action hierarchy instead of three equal text buttons
+                        // (UI audit C7): the recommended once-grant is the
+                        // primary action, "always" is the quieter outline
+                        // variant, and the rejection carries the error tone.
+                        // A wrapping row keeps the longer ru labels intact on
+                        // narrow screens.
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            FilledTonalButton(onClick = { vm.respondPermission("once") }) {
                                 Text(stringResource(R.string.chat_permission_once))
                             }
-                            TextButton(onClick = { vm.respondPermission("always") }) {
+                            OutlinedButton(onClick = { vm.respondPermission("always") }) {
                                 Text(stringResource(R.string.chat_permission_always))
                             }
-                            TextButton(onClick = { vm.respondPermission("reject") }) {
+                            TextButton(
+                                onClick = { vm.respondPermission("reject") },
+                                colors = ButtonDefaults.textButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.error,
+                                ),
+                            ) {
                                 Text(stringResource(R.string.chat_permission_deny))
                             }
                         }
@@ -342,7 +360,23 @@ private fun ChatTimeline(vm: ChatViewModel, state: ChatUiState) {
             }
         }
 
-        state.error?.let { error ->
+        state.error?.let { raw ->
+            // Frequent network failure categories get a localized headline;
+            // the raw exception text stays below as the secondary detail
+            // (UI audit C2). Unrecognized messages keep the raw-only banner.
+            val headline = when {
+                raw.contains("timeout", ignoreCase = true) || raw.contains("timed out", ignoreCase = true) ->
+                    stringResource(R.string.chat_error_timeout_title)
+                raw.contains("401") || raw.contains("unauthorized", ignoreCase = true) ->
+                    stringResource(R.string.chat_error_auth_title)
+                raw.contains("403") || raw.contains("forbidden", ignoreCase = true) ->
+                    stringResource(R.string.chat_error_access_title)
+                raw.contains("refused", ignoreCase = true) ||
+                    raw.contains("failed to connect", ignoreCase = true) ||
+                    raw.contains("unable to resolve", ignoreCase = true) ->
+                    stringResource(R.string.chat_error_connect_title)
+                else -> null
+            }
             Surface(
                 shape = MaterialTheme.shapes.medium,
                 color = MaterialTheme.colorScheme.errorContainer,
@@ -350,7 +384,19 @@ private fun ChatTimeline(vm: ChatViewModel, state: ChatUiState) {
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
             ) {
                 Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        if (headline == null) {
+                            Text(raw, style = MaterialTheme.typography.bodySmall)
+                        } else {
+                            Text(headline, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                raw,
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 3,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
                     TextButton(onClick = { vm.dismissError() }) { Text(stringResource(R.string.action_dismiss)) }
                 }
             }
@@ -572,6 +618,10 @@ private fun MessageBubble(message: UiMessage, onCopy: (String) -> Unit, onRevert
                 // Long-press on a user message offers the revert action (F-014).
                 .then(
                     if (onRevert != null) {
+                        // Long-press stays as the shortcut; the audit flagged
+                        // it as unreliable next to the selection container, so
+                        // the row button above is the authoritative affordance
+                        // (UI audit C9).
                         Modifier.combinedClickable(
                             role = Role.Button,
                             onClick = {},
@@ -584,7 +634,7 @@ private fun MessageBubble(message: UiMessage, onCopy: (String) -> Unit, onRevert
                 ),
         ) {
             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                message.parts.forEach { part -> PartView(part, onCopy) }
+                message.parts.forEach { part -> PartView(part, onCopy, onRevert) }
             }
         }
     }
@@ -592,7 +642,7 @@ private fun MessageBubble(message: UiMessage, onCopy: (String) -> Unit, onRevert
 }
 
 @Composable
-private fun PartView(part: UiPart, onCopy: (String) -> Unit) {
+private fun PartView(part: UiPart, onCopy: (String) -> Unit, onRevert: (() -> Unit)? = null) {
     when (part) {
         is UiPart.Text -> Column {
             SelectionText(part.text)
@@ -611,6 +661,19 @@ private fun PartView(part: UiPart, onCopy: (String) -> Unit) {
                         modifier = Modifier.size(15.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                }
+                // Explicit revert affordance (UI audit C9): the bubble's
+                // long-press shortcut competes with text selection on user
+                // messages, so the guaranteed path to revert is this button.
+                if (onRevert != null) {
+                    androidx.compose.material3.IconButton(onClick = onRevert) {
+                        Icon(
+                            painterResource(R.drawable.ic_revert),
+                            contentDescription = stringResource(R.string.chat_revert_action),
+                            modifier = Modifier.size(15.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
         }
@@ -684,7 +747,16 @@ private fun ToolCard(part: UiPart.Tool) {
                     "pending", "running" -> OcChipTone.TERTIARY
                     else -> OcChipTone.NEUTRAL
                 }
-                OcStatusChip(text = part.status, tone = statusTone)
+                // Localized chip label instead of the raw English server status
+                // (UI audit C1); unknown statuses still render verbatim.
+                val statusLabel = when (part.status) {
+                    "completed" -> stringResource(R.string.chat_status_completed)
+                    "error" -> stringResource(R.string.chat_status_error)
+                    "pending" -> stringResource(R.string.chat_status_pending)
+                    "running" -> stringResource(R.string.chat_status_running)
+                    else -> part.status
+                }
+                OcStatusChip(text = statusLabel, tone = statusTone)
             }
             // Local copies are required: title/output live in another Gradle
             // module, so the compiler will not smart-cast the properties.
@@ -704,10 +776,7 @@ private fun ToolCard(part: UiPart.Tool) {
                     collapsedDescription = stringResource(R.string.state_collapsed),
                 ) {
                     // Copyable without a toolbar (M3E audit E-011).
-                    SelectionContainer {
-                        Text(output.take(4000), style = io.github.oustery.opencodephone.core.designsystem.CodeTypography.output,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
+                    TruncatedCodeText(output, MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             // Failure explanation instead of a bare error chip (F-012).
@@ -718,16 +787,36 @@ private fun ToolCard(part: UiPart.Tool) {
                     expandedDescription = stringResource(R.string.state_expanded),
                     collapsedDescription = stringResource(R.string.state_collapsed),
                 ) {
-                    SelectionContainer {
-                        Text(
-                            error.take(4000),
-                            style = io.github.oustery.opencodephone.core.designsystem.CodeTypography.output,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    }
+                    TruncatedCodeText(error, MaterialTheme.colorScheme.error)
                 }
             }
         }
+    }
+}
+
+/** Cap before the tool output/error preview is cut (UI audit C3). */
+private const val TOOL_OUTPUT_LIMIT = 4000
+
+/**
+ * Mono code text that says so when it was silently cut at [TOOL_OUTPUT_LIMIT]
+ * (UI audit C3) — the notice is a separate line, so copying keeps the raw
+ * output untouched.
+ */
+@Composable
+private fun TruncatedCodeText(text: String, color: Color) {
+    SelectionContainer {
+        Text(
+            text.take(TOOL_OUTPUT_LIMIT),
+            style = io.github.oustery.opencodephone.core.designsystem.CodeTypography.output,
+            color = color,
+        )
+    }
+    if (text.length > TOOL_OUTPUT_LIMIT) {
+        Text(
+            stringResource(R.string.chat_tool_output_truncated, TOOL_OUTPUT_LIMIT),
+            style = MaterialTheme.typography.labelSmall,
+            color = color,
+        )
     }
 }
 
@@ -1108,7 +1197,15 @@ private fun DiffFileRow(entry: SessionFileDiff) {
                         "modified" -> OcChipTone.TERTIARY
                         else -> OcChipTone.NEUTRAL
                     }
-                    OcStatusChip(text = status, tone = tone)
+                    // Localized chip label instead of the raw English server
+                    // status (UI audit C1); unknown statuses render verbatim.
+                    val label = when (status) {
+                        "added" -> stringResource(R.string.chat_diff_added)
+                        "deleted" -> stringResource(R.string.chat_diff_deleted)
+                        "modified" -> stringResource(R.string.chat_diff_modified)
+                        else -> status
+                    }
+                    OcStatusChip(text = label, tone = tone)
                 }
                 Text(
                     text = "+${entry.additions}",
@@ -1149,6 +1246,13 @@ private fun ModelsSheet(vm: ChatViewModel, state: ChatUiState) {
         Text(
             stringResource(R.string.chat_models_hint),
             style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        // Server version moved here from the permanent timeline layer, where
+        // it occupied a line under every chat (UI audit C5).
+        Text(
+            stringResource(R.string.chat_connected, state.version),
+            style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.size(8.dp))

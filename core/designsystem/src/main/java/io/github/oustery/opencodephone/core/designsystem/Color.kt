@@ -84,6 +84,25 @@ private val DarkSurfaceContainer = Color(0xFF192220)
 private val DarkSurfaceContainerHigh = Color(0xFF232C2A)
 private val DarkSurfaceContainerHighest = Color(0xFF2E3735)
 
+// Fixed roles (UI audit C6): M3 container tones that stay constant across
+// light and dark, derived from the brand families — Fixed = the light-scheme
+// container step, Dim = the tone-80 sibling (the dark-scheme primary),
+// on…Variant = the tone-30 step (the light-scheme primary). Unset slots fall
+// back to the baseline purple palette, so future M3 components using fixed
+// roles would render off-brand without these.
+private val PrimaryFixed = Color(0xFF9CF1E3)
+private val OnPrimaryFixed = Color(0xFF00201B)
+private val PrimaryFixedDim = Color(0xFF80D5C8)
+private val OnPrimaryFixedVariant = Color(0xFF00695E)
+private val SecondaryFixed = Color(0xFFCAE8E1)
+private val OnSecondaryFixed = Color(0xFF06201C)
+private val SecondaryFixedDim = Color(0xFFAECCC5)
+private val OnSecondaryFixedVariant = Color(0xFF48635D)
+private val TertiaryFixed = Color(0xFFFFDCBC)
+private val OnTertiaryFixed = Color(0xFF2E1500)
+private val TertiaryFixedDim = Color(0xFFFFB868)
+private val OnTertiaryFixedVariant = Color(0xFF8D5106)
+
 val LightColorScheme = lightColorScheme(
     primary = LightPrimary,
     onPrimary = LightOnPrimary,
@@ -120,6 +139,18 @@ val LightColorScheme = lightColorScheme(
     surfaceContainer = LightSurfaceContainer,
     surfaceContainerHigh = LightSurfaceContainerHigh,
     surfaceContainerHighest = LightSurfaceContainerHighest,
+    primaryFixed = PrimaryFixed,
+    onPrimaryFixed = OnPrimaryFixed,
+    primaryFixedDim = PrimaryFixedDim,
+    onPrimaryFixedVariant = OnPrimaryFixedVariant,
+    secondaryFixed = SecondaryFixed,
+    onSecondaryFixed = OnSecondaryFixed,
+    secondaryFixedDim = SecondaryFixedDim,
+    onSecondaryFixedVariant = OnSecondaryFixedVariant,
+    tertiaryFixed = TertiaryFixed,
+    onTertiaryFixed = OnTertiaryFixed,
+    tertiaryFixedDim = TertiaryFixedDim,
+    onTertiaryFixedVariant = OnTertiaryFixedVariant,
 )
 
 val DarkColorScheme = darkColorScheme(
@@ -158,4 +189,18 @@ val DarkColorScheme = darkColorScheme(
     surfaceContainer = DarkSurfaceContainer,
     surfaceContainerHigh = DarkSurfaceContainerHigh,
     surfaceContainerHighest = DarkSurfaceContainerHighest,
+    // Fixed roles do not shift between light and dark — that is the point
+    // of the "fixed" family (UI audit C6).
+    primaryFixed = PrimaryFixed,
+    onPrimaryFixed = OnPrimaryFixed,
+    primaryFixedDim = PrimaryFixedDim,
+    onPrimaryFixedVariant = OnPrimaryFixedVariant,
+    secondaryFixed = SecondaryFixed,
+    onSecondaryFixed = OnSecondaryFixed,
+    secondaryFixedDim = SecondaryFixedDim,
+    onSecondaryFixedVariant = OnSecondaryFixedVariant,
+    tertiaryFixed = TertiaryFixed,
+    onTertiaryFixed = OnTertiaryFixed,
+    tertiaryFixedDim = TertiaryFixedDim,
+    onTertiaryFixedVariant = OnTertiaryFixedVariant,
 )
