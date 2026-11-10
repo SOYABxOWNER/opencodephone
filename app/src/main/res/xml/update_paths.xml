@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <cache-path name="updates" path="updates/" />
+    <!-- Workspace files are shared out of the app through the same provider
+         (functional audit F-016: share/export a workspace artifact). -->
+    <files-path name="workspace" path="workspace/" />
 </paths>

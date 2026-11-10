@@ -1,6 +1,7 @@
 package io.github.oustery.opencodephone.ui.files
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -51,12 +52,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.oustery.opencodephone.AppGraph
@@ -78,6 +83,9 @@ fun FilesScreen(graph: AppGraph) {
     var actionsFor by remember { mutableStateOf<FileEntry?>(null) }
     var renameFor by remember { mutableStateOf<FileEntry?>(null) }
     var deleteFor by remember { mutableStateOf<FileEntry?>(null) }
+    // Artifact preview (functional audit F-017).
+    var previewFor by remember { mutableStateOf<FileEntry?>(null) }
+    val context = LocalContext.current
 
     Column(modifier = Modifier.fillMaxSize()) {
         ScreenHeader(
@@ -99,6 +107,7 @@ fun FilesScreen(graph: AppGraph) {
                     branch = branch,
                     changes = state.gitChanges,
                     onOpenCommit = { vm.showCommit(true) },
+                    onPull = { vm.pull() },
                     onPush = { vm.push() },
                 )
             }
@@ -184,10 +193,24 @@ fun FilesScreen(graph: AppGraph) {
             title = { Text(entry.name) },
             text = { Text(stringResource(if (entry.isDir) R.string.files_actions_dir_hint else R.string.files_actions_file_hint)) },
             confirmButton = {
-                TextButton(onClick = {
-                    actionsFor = null
-                    renameFor = entry
-                }) { Text(stringResource(R.string.files_rename)) }
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (!entry.isDir && isPreviewable(entry.name)) {
+                        TextButton(onClick = {
+                            actionsFor = null
+                            previewFor = entry
+                        }) { Text(stringResource(R.string.files_preview)) }
+                    }
+                    if (!entry.isDir) {
+                        TextButton(onClick = {
+                            actionsFor = null
+                            shareWorkspaceFile(context, entry.file)
+                        }) { Text(stringResource(R.string.files_share)) }
+                    }
+                    TextButton(onClick = {
+                        actionsFor = null
+                        renameFor = entry
+                    }) { Text(stringResource(R.string.files_rename)) }
+                }
             },
             dismissButton = {
                 TextButton(onClick = {
@@ -261,10 +284,13 @@ fun FilesScreen(graph: AppGraph) {
             )
         }
     }
+    previewFor?.let { entry ->
+        PreviewDialog(entry, onDismiss = { previewFor = null })
+    }
 }
 
 @Composable
-private fun GitBar(branch: String, changes: Int, onOpenCommit: () -> Unit, onPush: () -> Unit) {
+private fun GitBar(branch: String, changes: Int, onOpenCommit: () -> Unit, onPull: () -> Unit, onPush: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
         shape = MaterialTheme.shapes.medium,
@@ -284,6 +310,9 @@ private fun GitBar(branch: String, changes: Int, onOpenCommit: () -> Unit, onPus
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onOpenCommit, enabled = changes > 0) {
                     Text(stringResource(R.string.git_commit))
+                }
+                OutlinedButton(onClick = onPull) {
+                    Text(stringResource(R.string.git_pull))
                 }
                 OutlinedButton(onClick = onPush) {
                     Text(stringResource(R.string.git_push))
@@ -530,4 +559,145 @@ private fun EditorDialog(
             }
         }
     }
+}
+
+// ------------------------------------------------------------- Preview
+
+private sealed interface PreviewState {
+    data object Loading : PreviewState
+    data class Image(val bitmap: android.graphics.Bitmap) : PreviewState
+    data class Html(val html: String) : PreviewState
+    data class Failed(val reason: String) : PreviewState
+}
+
+private val PREVIEW_IMAGE_EXTENSIONS = setOf("png", "jpg", "jpeg", "gif", "webp", "bmp")
+private const val PREVIEW_MAX_BYTES = 10 * 1024 * 1024
+
+/** Only files the preview dialog can actually render (functional audit F-017). */
+private fun isPreviewable(name: String): Boolean {
+    val ext = name.substringAfterLast('.', "").lowercase()
+    return ext in PREVIEW_IMAGE_EXTENSIONS || ext == "html" || ext == "htm"
+}
+
+/**
+ * Read the file on the IO dispatcher with a hard size cap; images are
+ * decoded through BitmapFactory, HTML is returned as text (rendered with
+ * JavaScript disabled).
+ */
+private fun loadPreview(file: java.io.File): PreviewState {
+    val ext = file.extension.lowercase()
+    return try {
+        val bytes = java.io.ByteArrayOutputStream().use { out ->
+            file.inputStream().use { input ->
+                val buffer = ByteArray(8192)
+                var total = 0
+                while (true) {
+                    val n = input.read(buffer)
+                    if (n < 0) break
+                    total += n
+                    if (total > PREVIEW_MAX_BYTES) return@use null
+                    out.write(buffer, 0, n)
+                }
+                out.toByteArray()
+            }
+        } ?: return PreviewState.Failed("File is larger than 10 MB")
+        when (ext) {
+            in PREVIEW_IMAGE_EXTENSIONS -> {
+                val bitmap = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    ?: return PreviewState.Failed("Cannot decode the image")
+                PreviewState.Image(bitmap)
+            }
+            "html", "htm" -> PreviewState.Html(bytes.toString(Charsets.UTF_8))
+            else -> PreviewState.Failed("No preview for this file type")
+        }
+    } catch (e: Exception) {
+        PreviewState.Failed(e.message ?: "Preview failed")
+    }
+}
+
+/**
+ * Fullscreen preview of agent artifacts (functional audit F-017): images and
+ * HTML pages the agent generated can finally be looked at inside the app.
+ * JavaScript stays disabled — the preview renders static content only.
+ */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun PreviewDialog(entry: FileEntry, onDismiss: () -> Unit) {
+    val state = remember(entry.file.absolutePath) { mutableStateOf<PreviewState>(PreviewState.Loading) }
+    LaunchedEffect(entry.file.absolutePath) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            state.value = loadPreview(entry.file)
+        }
+    }
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.Center) {
+            val compact = maxHeight < 520.dp || maxWidth < 600.dp
+            Surface(
+                modifier = if (compact) Modifier.fillMaxSize() else Modifier.widthIn(max = 900.dp).fillMaxWidth().heightIn(max = 720.dp),
+                shape = if (compact) androidx.compose.ui.graphics.RectangleShape else MaterialTheme.shapes.large,
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(entry.name, style = MaterialTheme.typography.titleMedium, maxLines = 2,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    when (val s = state.value) {
+                        PreviewState.Loading -> Column(
+                            modifier = Modifier.fillMaxSize().weight(1f),
+                            verticalArrangement = Arrangement.Center,
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            LinearWavyProgressIndicator()
+                        }
+                        is PreviewState.Image -> Image(
+                            bitmap = s.bitmap.asImageBitmap(),
+                            contentDescription = entry.name,
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.fillMaxSize().weight(1f),
+                        )
+                        is PreviewState.Html -> AndroidView(
+                            factory = { ctx ->
+                                android.webkit.WebView(ctx).apply {
+                                    settings.javaScriptEnabled = false
+                                    loadDataWithBaseURL(null, s.html, "text/html", "utf-8", null)
+                                }
+                            },
+                            modifier = Modifier.fillMaxSize().weight(1f),
+                            update = { view ->
+                                if (view.settings.javaScriptEnabled) view.settings.javaScriptEnabled = false
+                            },
+                        )
+                        is PreviewState.Failed -> Column(
+                            modifier = Modifier.fillMaxSize().weight(1f),
+                            verticalArrangement = Arrangement.Center,
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Text(
+                                stringResource(R.string.files_preview_failed, s.reason),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_close)) }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Share a workspace file with any installed app via the FileProvider (F-016). */
+private fun shareWorkspaceFile(context: android.content.Context, file: java.io.File) {
+    val uri = androidx.core.content.FileProvider.getUriForFile(
+        context,
+        context.packageName + ".updates",
+        file,
+    )
+    val mime = context.contentResolver.getType(uri) ?: "application/octet-stream"
+    val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+        type = mime
+        putExtra(android.content.Intent.EXTRA_STREAM, uri)
+        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(android.content.Intent.createChooser(intent, null))
 }

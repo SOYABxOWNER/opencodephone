@@ -316,5 +316,33 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
             _state.update { it.copy(message = "Pushed") }
         } }
     }
+
+    /**
+     * Fast-forward pull from origin (functional audit F-015): fetches through
+     * the same HTTPS URL + credential helper as push and refuses to merge
+     * diverged history (`--ff-only`), so local work is never silently mixed
+     * with incoming commits.
+     */
+    fun pull() {
+        task("Pulling…") {
+            gitLock.withLock {
+                val repo = checkNotNull(project) { "Select a repository directory" }
+                migrate(repo)
+                val branch = exec(repo, listOf("git", "rev-parse", "--abbrev-ref", "HEAD")).output.trim()
+                require(branch.isNotEmpty() && branch != "HEAD") { "No current branch" }
+                val remote = exec(repo, listOf("git", "remote", "get-url", "origin"))
+                check(remote.exitCode == 0) { "No remote" }
+                val clean = GitAuth.cleanUrl(remote.output.trim())
+                val result = exec(
+                    repo,
+                    GitAuth.command("pull", "--ff-only", clean, branch),
+                    GitAuth.environment(clean, graph.settings.gitConfig().githubToken),
+                )
+                check(result.exitCode == 0) { "Pull failed (exit ${result.exitCode})" }
+                _state.update { it.copy(message = "Pulled from origin") }
+            }
+            refresh()
+        }
+    }
     fun dismissMessage() = _state.update { it.copy(message = null) }
 }

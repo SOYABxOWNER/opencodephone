@@ -15,6 +15,7 @@
     <string name="action_delete">Удалить</string>
     <string name="action_copy">Копировать</string>
     <string name="action_dismiss">Скрыть</string>
+    <string name="action_close">Закрыть</string>
 
     <!-- Bootstrap -->
     <string name="bootstrap_subtitle">Локальный ИИ-агент OpenCode на вашем телефоне, внутри окружения Debian</string>
@@ -101,7 +102,11 @@
     <string name="git_changes">%1$d изм.</string>
     <string name="git_commit_hint">Сообщение коммита</string>
     <string name="git_commit">Коммит</string>
+    <string name="git_pull">Pull</string>
     <string name="git_push">Push</string>
+    <string name="files_share">Поделиться</string>
+    <string name="files_preview">Просмотр</string>
+    <string name="files_preview_failed">Просмотр недоступен: %1$s</string>
 
     <!-- Terminal -->
     <string name="terminal_env_not_ready">Среда Linux ещё не установлена. Сначала завершите настройку на главном экране.</string>
