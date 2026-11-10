@@ -234,6 +234,70 @@ class OpenCodeClientTest {
     }
 
     @Test
+    fun `session todos parse the pinned Todo shape`() = runBlocking {
+        server.enqueue(
+            MockResponse().setBody(
+                """[{"content":"Scaffold the page","status":"in_progress","priority":"high"},
+                    {"content":"Add tests","status":"pending","priority":"medium"},
+                    {"content":"Ship it","status":"completed","priority":"low"}]""",
+            ),
+        )
+        val todos = client.sessionTodos("ses_1")
+        assertEquals(3, todos.size)
+        assertEquals("Scaffold the page", todos[0].content)
+        assertEquals("in_progress", todos[0].status)
+        assertEquals("high", todos[0].priority)
+        assertEquals("completed", todos[2].status)
+        assertEquals("/session/ses_1/todo", server.takeRequest().path)
+    }
+
+    @Test
+    fun `session todos tolerate an empty or malformed body`() = runBlocking {
+        server.enqueue(MockResponse().setBody("[]"))
+        assertEquals(0, client.sessionTodos("ses_1").size)
+        server.enqueue(MockResponse().setBody("garbage"))
+        assertEquals(0, client.sessionTodos("ses_1").size)
+    }
+
+    @Test
+    fun `revert posts the messageID body`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(204))
+        client.revert("ses_1", "msg_42")
+        val recorded = server.takeRequest()
+        assertEquals("POST", recorded.method)
+        assertEquals("/session/ses_1/revert", recorded.path)
+        assertTrue(recorded.body.readUtf8().contains("\"messageID\":\"msg_42\""))
+    }
+
+    @Test
+    fun `unrevert posts to the unrevert endpoint`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(204))
+        client.unrevert("ses_1")
+        val recorded = server.takeRequest()
+        assertEquals("POST", recorded.method)
+        assertEquals("/session/ses_1/unrevert", recorded.path)
+    }
+
+    @Test
+    fun `agents parse mode and hidden leniently`() = runBlocking {
+        server.enqueue(
+            MockResponse().setBody(
+                """[{"name":"build","mode":"primary"},
+                    {"name":"plan","mode":"primary","hidden":false},
+                    {"name":"explore","mode":"subagent"},
+                    {"name":"internal","mode":"all","hidden":true},
+                    {"name":"legacy"}]""",
+            ),
+        )
+        val agents = client.listAgents()
+        assertEquals(5, agents.size)
+        assertEquals("primary", agents[0].mode)
+        assertEquals(true, agents[3].hidden)
+        assertEquals(null, agents[4].mode)
+        assertEquals("/agent", server.takeRequest().path)
+    }
+
+    @Test
     fun `basic auth header is attached when password configured`() = runBlocking {
         client.config = client.config.copy(username = "opencode", password = "secret")
         server.enqueue(MockResponse().setBody("""{"healthy":true,"version":"1.19.5"}"""))

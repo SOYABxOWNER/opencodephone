@@ -12,6 +12,7 @@ import io.github.oustery.opencodephone.core.model.ProviderListResponse
 import io.github.oustery.opencodephone.core.model.ServerEvent
 import io.github.oustery.opencodephone.core.model.Session
 import io.github.oustery.opencodephone.core.model.SessionFileDiff
+import io.github.oustery.opencodephone.core.model.TodoItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -297,6 +298,35 @@ class OpenCodeClient(
     suspend fun renameSession(sessionId: String, title: String): Session {
         val body = buildJsonObject { put("title", title) }
         return executeParsed("PATCH", "/session/${q(sessionId)}", body, Session.serializer())
+    }
+
+    /**
+     * The agent's task plan for a session (`GET /session/:id/todo`, pinned
+     * v1.19.5 returns `[{content, status, priority}]`, functional audit F-010).
+     */
+    suspend fun sessionTodos(sessionId: String): List<TodoItem> {
+        val text = execute("GET", "/session/${q(sessionId)}/todo") ?: return emptyList()
+        val arr = json.parseToJsonElement(text) as? kotlinx.serialization.json.JsonArray ?: return emptyList()
+        return arr.mapNotNull { el ->
+            runCatching { json.decodeFromString(TodoItem.serializer(), el.toString()) }.getOrNull()
+        }
+    }
+
+    /**
+     * Revert the session to before a message (`POST /session/:id/revert` with
+     * `{messageID}`, functional audit F-014). The server stores a revert
+     * marker; messages from that point onward leave the context until
+     * [unrevert] is called.
+     */
+    suspend fun revert(sessionId: String, messageId: String) {
+        execute("POST", "/session/${q(sessionId)}/revert", buildJsonObject {
+            put("messageID", messageId)
+        })
+    }
+
+    /** Restore all reverted messages (`POST /session/:id/unrevert`, F-014). */
+    suspend fun unrevert(sessionId: String) {
+        execute("POST", "/session/${q(sessionId)}/unrevert", buildJsonObject { })
     }
 
     /** One page of session messages (V1 `limit` + `before` cursor, F-011). */

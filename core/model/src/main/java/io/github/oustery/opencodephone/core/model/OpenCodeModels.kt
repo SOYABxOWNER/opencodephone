@@ -31,6 +31,19 @@ data class Session(
     @SerialName("parentID") val parentId: String? = null,
     val directory: String = "",
     val time: SessionTime? = null,
+    /** Non-null while the session is reverted at a message (F-014). */
+    val revert: SessionRevert? = null,
+)
+
+/**
+ * The revert marker stored on a reverted session (`POST /session/:id/revert`):
+ * messages from [messageId] onward leave the conversation context until
+ * `unrevert` restores them.
+ */
+@Serializable
+data class SessionRevert(
+    @SerialName("messageID") val messageId: String = "",
+    @SerialName("partID") val partId: String? = null,
 )
 
 @Serializable
@@ -90,6 +103,9 @@ data class ConfigProvidersResponse(
 @Serializable
 data class AgentInfo(
     val name: String,
+    /** `primary`, `subagent` or `all` (pinned v1.19.5 agent schema). */
+    val mode: String? = null,
+    val hidden: Boolean? = null,
 )
 
 @Serializable
