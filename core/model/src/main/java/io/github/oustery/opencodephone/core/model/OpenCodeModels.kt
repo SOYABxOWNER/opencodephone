@@ -155,10 +155,91 @@ data class ServerEvent(
     val properties: JsonElement? = null,
 )
 
-/** A permission request extracted from a `permission.updated` event. */
+/** A permission request extracted from `permission.asked` (pinned v1.19.5 `PermissionV1.Request`). */
 data class PermissionRequest(
     val sessionId: String,
     val permissionId: String,
     val type: String,
     val title: String,
+    /** Patterns the request covers (e.g. the command fragments that matched). */
+    val patterns: List<String> = emptyList(),
+    /** Shell command carried in `metadata.command`, when the tool provides it. */
+    val command: String? = null,
+)
+
+/** One selectable answer of an agent question (pinned v1.19.5 `QuestionV1.Option`). */
+@Serializable
+data class QuestionOption(
+    val label: String = "",
+    val description: String = "",
+)
+
+/**
+ * A single question the agent asks through the `question` tool
+ * (pinned v1.19.5 `QuestionV1.Info`). [multiple] selects several options;
+ * [custom] allows typing an answer instead of (or besides) the options —
+ * upstream defaults it to true, so null keeps the custom input available.
+ */
+@Serializable
+data class QuestionInfo(
+    val question: String = "",
+    val header: String = "",
+    val options: List<QuestionOption> = emptyList(),
+    val multiple: Boolean? = null,
+    val custom: Boolean? = null,
+)
+
+/**
+ * A pending question request from the `question.asked` event or
+ * `GET /question` (pinned v1.19.5 `QuestionV1.Request`). The agent blocks on
+ * the answer until the client replies or rejects the request.
+ */
+@Serializable
+data class QuestionRequest(
+    val id: String,
+    @SerialName("sessionID") val sessionId: String,
+    val questions: List<QuestionInfo> = emptyList(),
+)
+
+/** One input step of a provider auth method (pinned v1.19.5 `ProviderAuth.Prompt`). */
+@Serializable
+data class ProviderAuthPrompt(
+    /** `text` or `select`. */
+    val type: String = "text",
+    val key: String = "",
+    val message: String = "",
+    val placeholder: String? = null,
+    val options: List<ProviderAuthPromptOption> = emptyList(),
+)
+
+@Serializable
+data class ProviderAuthPromptOption(
+    val label: String = "",
+    val value: String = "",
+    val hint: String? = null,
+)
+
+/**
+ * An auth method a provider exposes (`GET /provider/auth`, pinned v1.19.5
+ * `ProviderAuth.Method`): `type: "api"` stores a plain API key, `type:
+ * "oauth"` drives the interactive browser flow. The methods come from the
+ * upstream auth plugins (github-copilot, ChatGPT, xai, azure, …).
+ */
+@Serializable
+data class ProviderAuthMethod(
+    val type: String = "api",
+    val label: String = "",
+    val prompts: List<ProviderAuthPrompt> = emptyList(),
+)
+
+/**
+ * Redirect of an OAuth provider flow (`POST /provider/:id/oauth/authorize`,
+ * pinned v1.19.5 `ProviderAuth.Authorization`). [method] `auto` completes in
+ * the browser on its own; `code` needs the pasted authorization code.
+ */
+@Serializable
+data class ProviderAuthorization(
+    val url: String = "",
+    val method: String = "code",
+    val instructions: String = "",
 )
