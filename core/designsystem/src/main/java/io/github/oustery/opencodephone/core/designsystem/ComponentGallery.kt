@@ -31,6 +31,16 @@ fun ComponentGallery() {
             OcDisclosure("Вывод инструмента", "Развёрнуто", "Свёрнуто") {
                 Text("git status\nWorking tree clean", style = CodeTypography.output)
             }
+            OcToolCard(
+                tool = "bash",
+                statusLabel = "Выполняется",
+                statusTone = OcChipTone.TERTIARY,
+                icon = painterResource(R.drawable.ic_copy),
+                expandedDescription = "Развёрнуто",
+                collapsedDescription = "Свёрнуто",
+                title = "git status --short --branch",
+                content = { Text("## main\n?? build/", style = CodeTypography.output) },
+            )
             MarkdownText(
                 markdown = "## Chat markdown\n\nText with **bold**, `inline code` and a [link](https://example.com).\n\n```kotlin\nval ready = true\n```",
                 codeCopyLabel = "Copy",

@@ -28,6 +28,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.defaultMinSize
@@ -516,6 +517,116 @@ fun OcGroupCard(
                 modifier = Modifier.size(20.dp).rotate(270f),
                 tint = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant,
             )
+        }
+    }
+}
+
+/**
+ * Collapsible card for one agent tool call: a MaterialShapes emblem and the
+ * tool name always stay visible, the status chip tracks the run state, and
+ * the full title plus a [content] slot (mono output, error text) expand
+ * below. Collapsed by default, so a busy session renders one quiet line per
+ * call; the expansion choice survives rotation and lazy-list recycling.
+ * Without [content] the chevron is omitted — there is nothing to expand.
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+fun OcToolCard(
+    tool: String,
+    statusLabel: String,
+    statusTone: OcChipTone,
+    icon: Painter,
+    modifier: Modifier = Modifier,
+    title: String? = null,
+    expandedDescription: String? = null,
+    collapsedDescription: String? = null,
+    content: (@Composable () -> Unit)? = null,
+) {
+    val expandable = content != null
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val chevronRotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        animationSpec = tween(durationMillis = 220),
+        label = "tool-card-chevron-rotation",
+    )
+    val haptics = LocalHapticFeedback.current
+    Surface(
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 32.dp)
+                    .then(
+                        if (expandable) {
+                            Modifier.clickable(
+                                role = Role.Button,
+                                onClickLabel = if (expanded) collapsedDescription else expandedDescription,
+                            ) {
+                                expanded = !expanded
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            }
+                        } else {
+                            Modifier
+                        },
+                    )
+                    .semantics {
+                        if (expandable && expandedDescription != null && collapsedDescription != null) {
+                            stateDescription = if (expanded) expandedDescription else collapsedDescription
+                        }
+                    },
+            ) {
+                // Same shape language as the entry rows (OcGroupCard) at
+                // in-timeline scale.
+                Surface(
+                    modifier = Modifier.size(26.dp),
+                    shape = MaterialShapes.Sunny.toShape(),
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            icon,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                        )
+                    }
+                }
+                Text(
+                    tool,
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                OcStatusChip(text = statusLabel, tone = statusTone)
+                if (expandable) {
+                    Icon(
+                        painterResource(R.drawable.ic_chevron_down),
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp).rotate(chevronRotation),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            if (!title.isNullOrBlank()) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = if (expanded || !expandable) 8 else 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(start = 34.dp, top = 2.dp),
+                )
+            }
+            AnimatedVisibility(visible = expanded && expandable) {
+                content?.invoke()
+            }
         }
     }
 }
