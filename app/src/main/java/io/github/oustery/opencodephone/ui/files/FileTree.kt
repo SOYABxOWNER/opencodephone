@@ -67,7 +67,7 @@ object FileTree {
         if (bytes < 0) return ""
         if (bytes < 1024) return "$bytes B"
         val units = listOf("KB", "MB", "GB", "TB")
-        var value = bytes.toDouble()
+        var value = bytes / 1024.0
         var unit = 0
         while (value >= 1024.0 && unit < units.lastIndex) {
             value /= 1024.0
