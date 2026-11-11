@@ -395,17 +395,21 @@ class OpenCodeClient(
 
     /**
      * Respond to a permission request (`POST /session/:id/permissions/:id`).
-     * Contract verified at the pinned `sst/opencode` tag v1.19.5
-     * (`PermissionV1.ReplyBody`): the body is
-     * `{reply: "once" | "always" | "reject"}` — the earlier `{response, …}`
-     * shape fails payload validation on the real server.
+     * Contract verified against the pinned `sst/opencode` v1.19.5 source
+     * (`PermissionResponsePayload` in
+     * `packages/opencode/src/server/routes/instance/httpapi/groups/session.ts`):
+     * the body is `{response: "once" | "always" | "reject"}`. Do NOT confuse
+     * this session-scoped (deprecated-but-active) route with the newer
+     * experimental `POST /permission/:requestID/reply`, which takes
+     * `{reply: …, message?}` — sending `{reply}` here fails validation with
+     * `BadRequest: Missing key at ["response"]`.
      */
     suspend fun respondPermission(
         sessionId: String,
         permissionId: String,
         response: String,
     ) {
-        val body = buildJsonObject { put("reply", response) }
+        val body = buildJsonObject { put("response", response) }
         execute("POST", "/session/${q(sessionId)}/permissions/${q(permissionId)}", body)
     }
 

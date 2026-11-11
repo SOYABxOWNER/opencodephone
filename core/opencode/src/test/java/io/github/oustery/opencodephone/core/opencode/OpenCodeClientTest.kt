@@ -373,17 +373,19 @@ class OpenCodeClientTest {
     }
 
     @Test
-    fun `permission reply uses the pinned v1 ReplyBody contract`() = runBlocking {
-        // The v1.19.5 route validates `{reply: "once"|"always"|"reject"}`;
-        // the earlier `{response, remember}` shape failed payload validation.
+    fun `permission reply uses the pinned v1 PermissionResponsePayload contract`() = runBlocking {
+        // The v1.19.5 session route (`/session/:id/permissions/:id`) validates
+        // `PermissionResponsePayload` = `{response: "once"|"always"|"reject"}`.
+        // The `{reply, message}` shape belongs to the newer experimental
+        // `/permission/:id/reply` route and fails validation on this one.
         server.enqueue(MockResponse().setResponseCode(200).setBody("true"))
         client.respondPermission("ses_1", "per_1", "once")
         val recorded = server.takeRequest()
         assertEquals("/session/ses_1/permissions/per_1", recorded.path)
         assertEquals("POST", recorded.method)
         val body = recorded.body.readUtf8()
-        assertTrue(body.contains("\"reply\":\"once\""))
-        assertFalse(body.contains("\"response\""))
+        assertTrue(body.contains("\"response\":\"once\""))
+        assertFalse(body.contains("\"reply\""))
         assertFalse(body.contains("\"remember\""))
     }
 
