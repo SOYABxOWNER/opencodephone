@@ -214,17 +214,21 @@ class SettingsViewModel(private val graph: AppGraph) : ViewModel() {
                 val health = tempClient.health()
                 // Interactive provider sign-in (v1.19.5 auth plugins) is a
                 // server-reported surface; fetch it while the connection is
-                // verified, degrading silently when unavailable.
+                // verified. It is optional, but a fetch failure must stay
+                // visible (exception audit) instead of degrading silently.
+                var methodsNote: String? = null
                 val methods = try {
                     tempClient.providerAuthMethods()
                 } catch (e: CancellationException) {
                     throw e
-                } catch (_: Exception) {
+                } catch (e: Exception) {
+                    methodsNote = (e.message ?: e.javaClass.simpleName).take(200)
                     emptyMap()
                 }
                 _state.update {
                     it.copy(
-                        connectionTest = "OK — opencode ${health.version}",
+                        connectionTest = "OK — opencode ${health.version}" +
+                            (methodsNote?.let { note -> " · sign-in methods unavailable: $note" } ?: ""),
                         serverAuthMethods = methods,
                     )
                 }
@@ -647,30 +651,54 @@ class SettingsViewModel(private val graph: AppGraph) : ViewModel() {
     /** Clear the crash-recovery draft copies (composer + editor buffer). */
     fun clearDrafts() {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val store = io.github.oustery.opencodephone.core.settings.DraftStore(
-                java.io.File(graph.appContext.filesDir, "drafts"),
-            )
-            store.clearChat()
-            store.clearEditor()
-            publishDataCleared(io.github.oustery.opencodephone.R.string.settings_data_item_drafts)
+            try {
+                val store = io.github.oustery.opencodephone.core.settings.DraftStore(
+                    java.io.File(graph.appContext.filesDir, "drafts"),
+                )
+                store.clearChat()
+                store.clearEditor()
+                publishDataCleared(io.github.oustery.opencodephone.R.string.settings_data_item_drafts)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update {
+                    it.copy(dataMessage = "Cleanup failed: ${e.message?.take(200) ?: e.javaClass.simpleName}")
+                }
+            }
         }
     }
 
     /** Delete the app-managed attachment copies under workspace/uploads. */
     fun clearUploads() {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val uploads = java.io.File(graph.layout.workspaceDir, "uploads")
-            uploads.listFiles()?.forEach { it.deleteRecursively() }
-            publishDataCleared(io.github.oustery.opencodephone.R.string.settings_data_item_uploads)
+            try {
+                val uploads = java.io.File(graph.layout.workspaceDir, "uploads")
+                uploads.listFiles()?.forEach { it.deleteRecursively() }
+                publishDataCleared(io.github.oustery.opencodephone.R.string.settings_data_item_uploads)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update {
+                    it.copy(dataMessage = "Cleanup failed: ${e.message?.take(200) ?: e.javaClass.simpleName}")
+                }
+            }
         }
     }
 
     /** Remove installer leftovers (downloaded archives, temp files). */
     fun clearInstallerCache() {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            graph.layout.downloadDir.listFiles()?.forEach { it.deleteRecursively() }
-            graph.layout.tmpDir.listFiles()?.forEach { it.deleteRecursively() }
-            publishDataCleared(io.github.oustery.opencodephone.R.string.settings_data_item_cache)
+            try {
+                graph.layout.downloadDir.listFiles()?.forEach { it.deleteRecursively() }
+                graph.layout.tmpDir.listFiles()?.forEach { it.deleteRecursively() }
+                publishDataCleared(io.github.oustery.opencodephone.R.string.settings_data_item_cache)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update {
+                    it.copy(dataMessage = "Cleanup failed: ${e.message?.take(200) ?: e.javaClass.simpleName}")
+                }
+            }
         }
     }
 

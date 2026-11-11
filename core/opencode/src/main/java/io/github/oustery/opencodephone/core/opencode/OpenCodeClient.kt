@@ -244,8 +244,18 @@ class OpenCodeClient(
                     try {
                         val result = trySend(json.decodeFromString(ServerEvent.serializer(), data))
                         if (result.isFailure && !isClosedForSend) close(IllegalStateException("SSE buffer overflow"))
-                    } catch (_: Exception) {
-                        // Ignore unparsable events; the stream continues.
+                    } catch (e: Exception) {
+                        // Unparsable events must not pass unseen (exception
+                        // audit): the stream stays alive, but a synthetic
+                        // parse-error event reaches the UI as a notice.
+                        trySend(
+                            ServerEvent(
+                                "client.event_parse_error",
+                                buildJsonObject {
+                                    put("error", (e.message ?: e.javaClass.simpleName).take(200))
+                                },
+                            ),
+                        )
                     }
                 }
 
@@ -335,6 +345,9 @@ class OpenCodeClient(
         val items: List<MessageWithParts>,
         /** Opaque cursor for the next, older page; null when history is exhausted. */
         val nextCursor: String?,
+        /** Returned items that could not be parsed; they are hidden from the
+         *  timeline, so the UI must surface this count (exception audit). */
+        val dropped: Int = 0,
     )
 
     /**
@@ -359,10 +372,12 @@ class OpenCodeClient(
         val text = bodyText ?: throw OpenCodeApiException(-1, "Empty response for $path")
         val arr = json.parseToJsonElement(text) as? kotlinx.serialization.json.JsonArray
             ?: throw OpenCodeApiException(-1, "Invalid OpenCode V1 JSON response for $path. Check the server version and address.")
+        var dropped = 0
         val items = arr.mapNotNull { el ->
-            runCatching { json.decodeFromString(MessageWithParts.serializer(), el.toString()) }.getOrNull()
+            runCatching { json.decodeFromString(MessageWithParts.serializer(), el.toString()) }
+                .getOrElse { dropped++; null }
         }
-        return MessagePage(items, nextCursor)
+        return MessagePage(items, nextCursor, dropped)
     }
 
     /**

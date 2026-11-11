@@ -19,7 +19,13 @@ import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
 internal enum class UpdatePhase { IDLE, CHECKING, CURRENT, AVAILABLE, DOWNLOADING, READY, ERROR }
-internal data class UpdateState(val phase: UpdatePhase = UpdatePhase.IDLE, val version: String = "", val progress: Int = 0)
+internal data class UpdateState(
+    val phase: UpdatePhase = UpdatePhase.IDLE,
+    val version: String = "",
+    val progress: Int = 0,
+    /** Failure reason for [UpdatePhase.ERROR]; shown under the phase text. */
+    val error: String? = null,
+)
 
 internal class AppUpdateViewModel(app: Application) : AndroidViewModel(app) {
     val state = MutableStateFlow(UpdateState())
@@ -49,7 +55,7 @@ internal class AppUpdateViewModel(app: Application) : AndroidViewModel(app) {
                 state.value = release?.let { UpdateState(UpdatePhase.AVAILABLE, it.version) }
                     ?: UpdateState(UpdatePhase.CURRENT)
             } catch (e: CancellationException) { throw e }
-            catch (_: Exception) { state.value = UpdateState(UpdatePhase.ERROR) }
+            catch (e: Exception) { state.value = UpdateState(UpdatePhase.ERROR, error = e.message ?: e.javaClass.simpleName) }
         }
     }
 
@@ -94,7 +100,7 @@ internal class AppUpdateViewModel(app: Application) : AndroidViewModel(app) {
                 check(apk.setReadOnly())
                 state.value = UpdateState(UpdatePhase.READY, selected.version, 100)
             } catch (e: CancellationException) { throw e }
-            catch (_: Exception) { state.value = UpdateState(UpdatePhase.ERROR) }
+            catch (e: Exception) { state.value = UpdateState(UpdatePhase.ERROR, selected.version, error = e.message ?: e.javaClass.simpleName) }
             finally { part.delete() }
         }
     }
@@ -124,7 +130,9 @@ internal class AppUpdateViewModel(app: Application) : AndroidViewModel(app) {
             val uri = FileProvider.getUriForFile(context, "${context.packageName}.updates", apk)
             context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive")
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
-        } catch (_: Exception) { state.value = UpdateState(UpdatePhase.ERROR) }
+        } catch (e: Exception) {
+            state.value = UpdateState(UpdatePhase.ERROR, state.value.version, error = e.message ?: e.javaClass.simpleName)
+        }
     }
 
     fun cancel() {

@@ -438,6 +438,27 @@ private fun ChatTimeline(vm: ChatViewModel, state: ChatUiState) {
             }
         }
 
+        state.notice?.let { raw ->
+            // Non-blocking degradation notices (exception audit): optional
+            // surfaces report failures here instead of staying silent. Softer
+            // styling than the error banner, still always dismissible.
+            Surface(
+                shape = MaterialTheme.shapes.medium,
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+            ) {
+                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        raw,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = { vm.dismissNotice() }) { Text(stringResource(R.string.action_dismiss)) }
+                }
+            }
+        }
+
         ChatInput(vm, state)
 
         // Agent questions (v1.19.5 `question` tool): a modal answer dialog

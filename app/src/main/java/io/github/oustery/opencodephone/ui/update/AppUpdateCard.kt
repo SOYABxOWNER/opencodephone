@@ -31,6 +31,15 @@ internal fun AppUpdateCard() {
                 UpdatePhase.READY -> R.string.update_ready
                 UpdatePhase.ERROR -> R.string.update_error
             }, state.version, state.progress))
+            if (state.phase == UpdatePhase.ERROR) {
+                state.error?.let { reason ->
+                    Text(
+                        reason,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
             when (state.phase) {
                 UpdatePhase.CHECKING, UpdatePhase.DOWNLOADING -> {
                     if (state.phase == UpdatePhase.DOWNLOADING) LinearWavyProgressIndicator(progress = { state.progress / 100f }, modifier = Modifier.fillMaxWidth())

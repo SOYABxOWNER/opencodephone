@@ -40,6 +40,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -92,6 +93,10 @@ data class ChatUiState(
     val showModels: Boolean = false,
     val attachments: List<PendingAttachment> = emptyList(),
     val error: String? = null,
+    // Non-blocking degradation notices (exception audit): optional surfaces
+    // (agent list, task plan, …) report their failures here instead of
+    // staying silent. Shown as a softer banner below the error one.
+    val notice: String? = null,
     // Skeleton gates (M3E audit E-017): sheets show placeholders instead of
     // a misleading "empty" label while the first fetch is still in flight.
     val sessionsLoading: Boolean = false,
@@ -232,7 +237,12 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                 loadAgents()
             } catch (e: CancellationException) {
                 throw e
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                // Convenience affordance (F-006): must not break the
+                // connection — but the failure must not stay invisible.
+                _state.update {
+                    it.copy(notice = "Agent list unavailable: ${e.message ?: e.javaClass.simpleName}")
+                }
             }
             loadSessions()
             subscribeEvents()
@@ -304,14 +314,17 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
         _state.update { it.copy(agentName = name?.takeIf { n -> n.isNotBlank() }) }
     }
 
-    /** Fetch the agent's task plan; todos are optional, failures stay quiet (F-010). */
+    /** Fetch the agent's task plan; todos are optional (F-010), failures surface as a notice. */
     private suspend fun loadTodosQuiet(sessionId: String) {
         try {
             val todos = activeClient.sessionTodos(sessionId)
             if (_state.value.activeSessionId == sessionId) _state.update { it.copy(todos = todos) }
         } catch (e: CancellationException) {
             throw e
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            _state.update {
+                it.copy(notice = "Task plan unavailable: ${e.message ?: e.javaClass.simpleName}")
+            }
         }
     }
 
@@ -323,7 +336,10 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
             client.pendingQuestions()
         } catch (e: CancellationException) {
             throw e
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            _state.update {
+                it.copy(notice = "Pending questions unavailable: ${e.message ?: e.javaClass.simpleName}")
+            }
             emptyList()
         }
         if (ticket != endpointEpoch) return
@@ -404,6 +420,15 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                 val request = OcJson.permissionRequest(event.properties)
                 if (request != null && request.sessionId == _state.value.activeSessionId) {
                     _state.update { it.copy(permission = request) }
+                } else if (request == null) {
+                    // An unreadable permission event means the approval UI
+                    // would never appear while the agent waits for an answer.
+                    _state.update {
+                        it.copy(
+                            error = "Permission request could not be parsed; abort the task if the agent stays blocked " +
+                                "(${event.properties.toString().take(160)})",
+                        )
+                    }
                 }
             }
 
@@ -412,9 +437,15 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                 val props = event.properties as? JsonObject
                 val sessionId = OcJson.run { props?.optString("sessionID") }
                 if (sessionId != null && sessionId == _state.value.activeSessionId) {
-                    val todos = (props?.get("todos") as? JsonArray)?.mapNotNull { el ->
+                    val elements: List<JsonElement> = (props?.get("todos") as? JsonArray)?.toList().orEmpty()
+                    val todos = elements.mapNotNull { el ->
                         runCatching { OcJson.lenient.decodeFromString(TodoItem.serializer(), el.toString()) }.getOrNull()
-                    }.orEmpty()
+                    }
+                    if (todos.size < elements.size) {
+                        _state.update {
+                            it.copy(notice = "${elements.size - todos.size} plan item(s) could not be parsed")
+                        }
+                    }
                     _state.update { it.copy(todos = todos) }
                 }
             }
@@ -433,6 +464,15 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                 }
                 if (request != null && request.sessionId == _state.value.activeSessionId) {
                     _state.update { it.copy(question = request) }
+                } else if (request == null) {
+                    // The agent blocks on an answer we cannot render; the
+                    // user must know to abort the task.
+                    _state.update {
+                        it.copy(
+                            error = "Agent question could not be parsed; abort the task if it stays blocked " +
+                                "(${event.properties.toString().take(160)})",
+                        )
+                    }
                 }
             }
 
@@ -488,7 +528,13 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
             val visible = if (marker != null) ui.filter { it.id < marker } else ui
             _state.update {
                 if (ticket == endpointEpoch && it.activeSessionId == sessionId) {
-                    it.copy(messages = visible, earlierCursor = page.nextCursor)
+                    it.copy(
+                        messages = visible,
+                        earlierCursor = page.nextCursor,
+                        notice = if (page.dropped > 0) {
+                            "${page.dropped} message(s) could not be parsed and are hidden"
+                        } else it.notice,
+                    )
                 } else {
                     it
                 }
@@ -526,6 +572,9 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                             messages = older + it.messages,
                             earlierCursor = page.nextCursor,
                             loadingEarlier = false,
+                            notice = if (page.dropped > 0) {
+                                "${page.dropped} message(s) could not be parsed and are hidden"
+                            } else it.notice,
                         )
                     } else {
                         it.copy(loadingEarlier = false)
@@ -870,14 +919,24 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                 val selection = current.modelSelection
                 val inlineText = if (remote && sentAttachments.isNotEmpty()) {
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        sentAttachments.mapNotNull { file ->
+                        val failed = mutableListOf<String>()
+                        val blocks = sentAttachments.mapNotNull { file ->
                             runCatching {
                                 io.github.oustery.opencodephone.core.opencode.Attachments.inlineBlock(
                                     file.displayName,
                                     java.io.File(file.absolutePath).readText(),
                                 )
-                            }.getOrNull()
-                        }.joinToString("\n\n").ifBlank { null }
+                            }.getOrElse {
+                                failed.add(file.displayName)
+                                null
+                            }
+                        }
+                        if (failed.isNotEmpty()) {
+                            _state.update {
+                                it.copy(notice = "Attachments not inlined: ${failed.joinToString(", ").take(200)}")
+                            }
+                        }
+                        blocks.joinToString("\n\n").ifBlank { null }
                     }
                 } else {
                     null
@@ -1026,8 +1085,12 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                 client.rejectQuestion(request.id)
             } catch (e: CancellationException) {
                 throw e
-            } catch (_: Exception) {
-                // Best effort: a later reconcile reloads still-pending requests.
+            } catch (e: Exception) {
+                // The dialog is already closed and the next reconcile reloads
+                // still-pending requests, but the failure stays visible.
+                _state.update {
+                    it.copy(notice = "Question rejection failed: ${e.message ?: e.javaClass.simpleName}")
+                }
             }
         }
     }
@@ -1046,6 +1109,8 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
     fun showAgents(show: Boolean) = _state.update { it.copy(showAgents = show) }
 
     fun dismissError() = _state.update { it.copy(error = null) }
+
+    fun dismissNotice() = _state.update { it.copy(notice = null) }
 
     override fun onCleared() {
         eventsJob?.cancel()
