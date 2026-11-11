@@ -19,6 +19,10 @@ fun ComponentGallery() {
             OcDisclosure("Вывод инструмента", "Развёрнуто", "Свёрнуто") {
                 Text("git status\nWorking tree clean", style = CodeTypography.output)
             }
+            MarkdownText(
+                markdown = "## Chat markdown\n\nText with **bold**, `inline code` and a [link](https://example.com).\n\n```kotlin\nval ready = true\n```",
+                codeCopyLabel = "Copy",
+            )
             Text("Редактор / Editor", style = CodeTypography.editor)
         }
     }
