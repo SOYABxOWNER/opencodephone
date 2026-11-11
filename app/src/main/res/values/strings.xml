@@ -320,4 +320,13 @@
     <string name="editor_discard_confirm">Discard</string>
     <string name="chat_project_chip">Project: %1$s</string>
     <string name="terminal_project">project</string>
+
+    <!-- Grouped settings (UI rework): root list of groups and sub-pages -->
+    <string name="settings_group_providers_title">Account &amp; providers</string>
+    <string name="settings_group_app_title">App &amp; data</string>
+    <string name="settings_group_keys_count">Saved keys: %1$d</string>
+    <string name="settings_group_git_summary_empty">Identity for commits, GitHub token for push</string>
+    <string name="settings_pick_section">Select a section on the left.</string>
+    <string name="nav_back">Back</string>
+    <string name="nav_app_version">Version %1$s</string>
 </resources>
