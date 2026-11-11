@@ -138,7 +138,7 @@ object MarkdownParser {
                     i++
                     // A paragraph ends at a blank line or at the start of the
                     // next block; blank lines are never paragraph content.
-                    while (i < lines.size && lines[i].isNotBlank() && !startsWithBlock(lines, i)) {
+                    while (i < lines.size && lines[i].isNotBlank() && !startsBlock(lines, i)) {
                         paragraph += lines[i]
                         i++
                     }
@@ -151,7 +151,7 @@ object MarkdownParser {
 
     private fun parseList(lines: List<String>, start: Int, blocks: MutableList<MdBlock>): Int {
         val firstMatch = listItem.matchEntire(lines[start])!!
-        val items = mutableListOf<MdListItem>()
+        var items = mutableListOf<MdListItem>()
         // A marker-type change (bullet -> number) starts a new list, matching
         // the CommonMark behaviour users expect from mixed fragments.
         var ordered = firstMatch.groupValues[2].first().isDigit()
@@ -181,7 +181,7 @@ object MarkdownParser {
                 i++
                 // Lazy continuation: an indented non-item line extends the item.
                 while (i < lines.size && lines[i].isNotBlank() && !listItem.containsMatchIn(lines[i]) &&
-                    (lines[i].startsWith("  ") || !startsWithBlock(lines, i))
+                    (lines[i].startsWith("  ") || !startsBlock(lines, i))
                 ) {
                     content.append('\n').append(lines[i].trim())
                     i++
