@@ -283,6 +283,14 @@ private fun AppDrawerContent(
                     modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
                 )
             }
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            // Quiet version footer: the drawer doubles as an about glance.
+            Text(
+                text = stringResource(R.string.nav_app_version, BuildConfig.VERSION_NAME),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+            )
         }
     }
 }
