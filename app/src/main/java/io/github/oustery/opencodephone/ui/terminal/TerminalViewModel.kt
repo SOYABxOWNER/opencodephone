@@ -16,6 +16,10 @@ data class TerminalUiState(
     val output: List<String> = emptyList(),
     val draft: String = "",
     val alive: Boolean = false,
+    /** Recently sent commands, newest first (chips above the composer). */
+    val history: List<String> = emptyList(),
+    /** Terminal font scale (1.0 = stock); zoom persists for the session. */
+    val fontScale: Float = 1.0f,
 )
 
 /**
@@ -105,11 +109,23 @@ class TerminalViewModel(private val graph: AppGraph) : ViewModel() {
 
     fun updateDraft(value: String) = _state.update { it.copy(draft = value) }
 
+    /** Full raw transcript for the copy-all action. */
+    fun outputText(): String = _state.value.output.joinToString("\n")
+
+    fun zoomIn() = _state.update { it.copy(fontScale = (it.fontScale + 0.1f).coerceAtMost(1.6f)) }
+    fun zoomOut() = _state.update { it.copy(fontScale = (it.fontScale - 0.1f).coerceAtLeast(0.7f)) }
+
+    /** Put a recalled history entry into the composer for editing. */
+    fun recall(command: String) = _state.update { it.copy(draft = command) }
+
     fun send() {
         val text = _state.value.draft
         val proc = process ?: return
         if (!proc.isAlive || text.isBlank()) return
         appendLine("$ $text")
+        // Keep a short de-duplicated history so recent commands stay one tap
+        // away (and survive tab switches with the retained view model).
+        _state.update { st -> st.copy(history = (listOf(text) + st.history.filter { it != text }).take(MAX_HISTORY)) }
         viewModelScope.launch(Dispatchers.IO) {
             runCatching {
                 proc.outputStream.write((text + "\n").toByteArray(Charsets.UTF_8))
@@ -160,5 +176,6 @@ class TerminalViewModel(private val graph: AppGraph) : ViewModel() {
 
     private companion object {
         const val MAX_LINES = 400
+        const val MAX_HISTORY = 24
     }
 }

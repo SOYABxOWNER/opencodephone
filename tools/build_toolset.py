@@ -27,7 +27,14 @@ import urllib.request
 
 BASE = "http://deb.debian.org/debian"
 SUITE = "trixie"
-SEEDS = ["git", "curl", "ripgrep", "less", "procps", "ca-certificates"]
+# The pre-resolved toolset installed at bootstrap. Seeds beyond the original
+# git/curl/ripgrep core are requested for the on-device experience: jq and
+# fd-find (as `fdfind`) for data/file lookup, tree/zip/unzip for archives and
+# inspection, python3 for agent-written scripts and quick automation.
+SEEDS = [
+    "git", "curl", "ripgrep", "less", "procps", "ca-certificates",
+    "jq", "fd-find", "tree", "zip", "unzip", "python3",
+]
 WORK = os.environ.get("TOOLSET_WORK", os.path.join(os.path.dirname(__file__), ".work"))
 OUT = os.environ.get("TOOLSET_OUT", os.path.join(os.path.dirname(__file__), ".out"))
 

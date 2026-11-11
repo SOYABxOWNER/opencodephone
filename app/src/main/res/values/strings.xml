@@ -161,6 +161,10 @@
     <string name="files_actions_file_hint">Choose an action for this file.</string>
     <string name="files_actions_dir_hint">Choose an action for this folder.</string>
     <string name="files_row_actions">File actions</string>
+    <string name="files_show_hidden">Show hidden files</string>
+    <string name="files_hide_hidden">Hide hidden files</string>
+    <string name="files_folder_unreadable">Folder %1$s cannot be read. Tap it to retry.</string>
+    <string name="files_child_count">%1$d items</string>
 
     <!-- Terminal -->
     <string name="terminal_env_not_ready">The Linux environment is not installed yet. Finish the setup on the home screen first.</string>
@@ -168,6 +172,7 @@
     <string name="terminal_restart">Restart shell</string>
     <string name="terminal_input_hint">shell command…</string>
     <string name="terminal_run">Run</string>
+    <string name="terminal_copy_all">Copy all output</string>
     <string name="terminal_empty_title">Output will appear here</string>
     <string name="terminal_empty_hint">Run a command below — use the quick chips or the input line.</string>
     <string name="terminal_shell_stopped">Shell is not running — tap restart above</string>
@@ -245,6 +250,10 @@
     <string name="env_service_running">OpenCode server active on port %1$d</string>
     <string name="env_service_failed">OpenCode server failed: %1$s</string>
     <string name="env_service_stopped">OpenCode server stopped</string>
+    <string name="env_service_task_running">Agent task running…</string>
+    <string name="env_service_task_done">Agent task finished</string>
+    <string name="agent_status_idle">No running agent task</string>
+    <string name="nav_open_menu">Open navigation menu</string>
     <string name="settings_server_restart">Start / restart server</string>
     <string name="settings_remote_security">Remote hosts use HTTPS with certificate validation. Enter a hostname or IP, not a URL. For an HTTP server, use a secure tunnel to localhost.</string>
     <string name="startup_loading">Opening secure settings…</string>

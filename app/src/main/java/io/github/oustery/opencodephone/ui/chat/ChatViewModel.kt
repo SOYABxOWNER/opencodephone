@@ -35,6 +35,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonArray
@@ -137,6 +139,17 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
     private var chatDraftJob: Job? = null
 
     init {
+        // Publish the agent task status to the app shell (notification +
+        // sidebar): every busy transition of the active session, from any of
+        // its sources (prompt sent, session.status events, disconnects).
+        viewModelScope.launch {
+            _state.map { it.busy }.distinctUntilChanged().collect { busy ->
+                graph.setAgentActivity(
+                    if (busy) io.github.oustery.opencodephone.core.model.AgentActivity.RUNNING
+                    else io.github.oustery.opencodephone.core.model.AgentActivity.IDLE,
+                )
+            }
+        }
         // Restore unsaved work after process death; attachment copies live in
         // the workspace, so entries whose file is gone are silently dropped.
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {

@@ -3,6 +3,7 @@ package io.github.oustery.opencodephone.ui.files
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.oustery.opencodephone.AppGraph
+import io.github.oustery.opencodephone.R
 import io.github.oustery.opencodephone.core.linuxenv.*
 import io.github.oustery.opencodephone.core.settings.DraftStore
 import kotlinx.coroutines.*
@@ -12,14 +13,25 @@ import kotlinx.coroutines.sync.withLock
 import java.io.File
 import java.util.concurrent.atomic.AtomicLong
 
- data class FileEntry(val file: File, val name: String, val isDir: Boolean, val depth: Int)
-
-/** One entry of `git status --porcelain -z` (staged+unstaged combined). */
  data class GitChange(val status: String, val path: String)
 
  data class FilesUiState(
-    val entries: List<FileEntry> = emptyList(), val expanded: Set<String> = emptySet(),
-    val workspaceEmpty: Boolean = false, val gitBranch: String? = null, val gitChanges: Int = 0,
+    /** Direct children per loaded directory path (sorted, filtered). */
+    val children: Map<String, List<FileEntry>> = emptyMap(),
+    /** Flattened visible rows derived from [children] + [expanded]. */
+    val rows: List<FileEntry> = emptyList(),
+    val expanded: Set<String> = emptySet(),
+    /** Directories whose single-level load is still in flight. */
+    val loadingDirs: Set<String> = emptySet(),
+    /** Per-directory load errors; tapping the directory retries. */
+    val dirErrors: Map<String, String> = emptyMap(),
+    /** Dotfiles (`.git`, `.env`, …) stay hidden until the user asks. */
+    val hiddenVisible: Boolean = false,
+    /** False until the first root listing lands (skeleton phase). */
+    val workspaceLoaded: Boolean = false,
+    /** True once loaded and the visible tree is empty (empty-state CTA). */
+    val workspaceEmpty: Boolean = false,
+    val gitBranch: String? = null, val gitChanges: Int = 0,
     val changeList: List<GitChange> = emptyList(),
     val gitProject: String? = null, val editing: EditingFile? = null,
     val showCloneDialog: Boolean = false, val showNewFileDialog: Boolean = false,
@@ -37,7 +49,6 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
     private val files = WorkspaceFiles(workspace)
     private val drafts = DraftStore(java.io.File(graph.appContext.filesDir, "drafts"))
     private val gitLock = Mutex()
-    private val scanEpoch = AtomicLong()
     private val editEpoch = AtomicLong()
     private var refreshJob: Job? = null
     private var editorDraftJob: Job? = null
@@ -48,6 +59,95 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
     init {
         refresh()
         restoreEditorDraft()
+    }
+
+    // ------------------------------------------------------------------ tree
+
+    /** Builds rows from the loaded tree; the single source of row truth. */
+    private fun rebuild(s: FilesUiState): FilesUiState {
+        val rows = FileTree.flatten(s.children, s.expanded, workspace.absolutePath)
+        return s.copy(
+            rows = rows,
+            workspaceEmpty = s.workspaceLoaded && rows.isEmpty(),
+        )
+    }
+
+    /**
+     * Lists one directory level: visible (non-hidden unless requested)
+     * entries, directories first, each annotated with size/child count.
+     * A directory load failure only marks that directory — the rest of the
+     * tree keeps working (the old global scan died on the first bad entry).
+     */
+    private fun listChildren(dir: File, hiddenVisible: Boolean): List<FileEntry> {
+        files.checked(dir)
+        val all = dir.listFiles()
+            ?: throw IllegalStateException(graph.appContext.getString(R.string.files_folder_unreadable, dir.name))
+        val visible = all
+            .filter { hiddenVisible || !FileTree.isHiddenName(it.name) }
+            .filter { !java.nio.file.Files.isSymbolicLink(it.toPath()) }
+        val entries = visible.map { child ->
+            if (child.isDirectory) {
+                val count = child.listFiles()
+                    ?.count { hiddenVisible || !FileTree.isHiddenName(it.name) } ?: -1
+                FileEntry(child, child.name, true, 0, childCount = count)
+            } else {
+                FileEntry(child, child.name, false, 0, size = child.length())
+            }
+        }
+        return FileTree.sortEntries(entries)
+    }
+
+    /** Merges a freshly listed directory into the tree state. */
+    private fun withLoadedDir(path: String, list: List<FileEntry>?) {
+        _state.update { s ->
+            val kids = if (list == null) s.children - path else s.children + (path to list)
+            rebuild(
+                s.copy(
+                    children = kids,
+                    loadingDirs = s.loadingDirs - path,
+                    dirErrors = if (list == null) s.dirErrors else s.dirErrors - path,
+                    workspaceLoaded = if (path == workspace.absolutePath) true else s.workspaceLoaded,
+                ),
+            )
+        }
+    }
+
+    /** Loads a single directory level without touching the rest of the tree. */
+    private fun loadChildren(path: String) {
+        _state.update { it.copy(loadingDirs = it.loadingDirs + path, dirErrors = it.dirErrors - path) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val hidden = _state.value.hiddenVisible
+            val list = try {
+                listChildren(File(path), hidden)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _state.update { s ->
+                    if (path in s.loadingDirs) {
+                        s.copy(
+                            loadingDirs = s.loadingDirs - path,
+                            dirErrors = s.dirErrors + (path to (e.message ?: "Load failed")),
+                        )
+                    } else s
+                }
+                return@launch
+            }
+            withLoadedDir(path, list)
+        }
+    }
+
+    fun toggleHidden() {
+        val nowVisible = !_state.value.hiddenVisible
+        _state.update { s -> rebuild(s.copy(hiddenVisible = nowVisible)) }
+        // Hidden entries change what each loaded directory shows: reload
+        // everything already on screen (bounded by what the user expanded).
+        val targets = _state.value.children.keys.toList()
+        viewModelScope.launch(Dispatchers.IO) {
+            for (path in targets) {
+                val list = runCatching { listChildren(File(path), nowVisible) }.getOrNull() ?: continue
+                withLoadedDir(path, list)
+            }
+        }
     }
 
     /**
@@ -108,26 +208,29 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
     }
 
     fun refresh() {
-        val ticket = scanEpoch.incrementAndGet()
-        val expanded = _state.value.expanded
         refreshJob?.cancel()
         refreshJob = viewModelScope.launch(Dispatchers.IO) {
             try {
-                val entries = mutableListOf<FileEntry>()
-                fun scan(dir: File, depth: Int) {
-                    ensureActive()
-                    if (depth > 64) return
-                    val children = dir.listFiles()?.sortedWith(compareByDescending<File> { it.isDirectory }.thenBy { it.name }) ?: return
-                    for (child in children) {
-                        ensureActive()
-                        if (java.nio.file.Files.isSymbolicLink(child.toPath())) continue
-                        files.checked(child)
-                        entries += FileEntry(child, child.name, child.isDirectory, depth)
-                        if (child.isDirectory && child.absolutePath in expanded) scan(child, depth + 1)
+                // Reload the workspace root plus every loaded directory that
+                // is still expanded; expansion state survives the refresh.
+                val loaded = _state.value.children.keys
+                val targets = (loaded + workspace.absolutePath)
+                    .filter { it == workspace.absolutePath || it in _state.value.expanded }
+                for (path in targets) {
+                    val list = runCatching { listChildren(File(path), _state.value.hiddenVisible) }.getOrNull()
+                    if (list != null) {
+                        withLoadedDir(path, list)
+                    } else if (path == workspace.absolutePath && _state.value.children[path] == null) {
+                        // First root listing failed (root is app-private, so
+                        // this is rare): finish the skeleton phase instead of
+                        // spinning forever, with the empty-state CTA.
+                        withLoadedDir(path, emptyList())
                     }
+                    // Otherwise keep the previous listing of that directory.
                 }
-                scan(workspace, 0)
-                if (scanEpoch.get() == ticket) _state.update { it.copy(entries = entries, workspaceEmpty = entries.isEmpty()) }
+                if (!_state.value.workspaceLoaded) {
+                    withLoadedDir(workspace.absolutePath, emptyList())
+                }
                 if (graph.layout.isInstalled()) gitLock.withLock {
                     val repos = (listOf(workspace) + (workspace.listFiles()?.toList() ?: emptyList()))
                         .filter { it.isDirectory && !java.nio.file.Files.isSymbolicLink(it.toPath()) && File(it, ".git").isDirectory }
@@ -143,17 +246,27 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
         }
     }
 
+    /**
+     * Expand/collapse one directory. The flip is synchronous so the chevron
+     * answers immediately; children load for that directory alone, so a slow
+     * or broken folder can no longer block or drop the rest of the tree.
+     */
     fun toggleDir(entry: FileEntry) {
-        _state.update { it.copy(expanded = if (entry.file.absolutePath in it.expanded) it.expanded - entry.file.absolutePath else it.expanded + entry.file.absolutePath) }
-        task {
-            if (File(files.checked(entry.file), ".git").exists()) gitLock.withLock {
-                project = entry.file
-                publishProject(entry.file)
-                migrate(entry.file)
-                refreshGit()
+        if (!entry.isDir) return
+        val path = entry.file.absolutePath
+        val expanding = path !in _state.value.expanded
+        _state.update { s -> rebuild(s.copy(expanded = if (expanding) s.expanded + path else s.expanded - path)) }
+        if (expanding) {
+            if (path !in _state.value.children) loadChildren(path)
+            task {
+                if (File(files.checked(entry.file), ".git").exists()) gitLock.withLock {
+                    project = entry.file
+                    publishProject(entry.file)
+                    migrate(entry.file)
+                    refreshGit()
+                }
             }
         }
-        refresh()
     }
 
     fun openFile(entry: FileEntry) {
@@ -270,13 +383,19 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
             drafts.readEditor()?.let { d ->
                 if (d.path == absolute || d.path.startsWith("$absolute/")) drafts.clearEditor()
             }
-            _state.update { st -> st.copy(
-                editing = st.editing?.takeIf { e ->
-                    val p = e.file.absolutePath
-                    p != absolute && !p.startsWith("$absolute/")
-                },
-                expanded = st.expanded.filterNot { it == absolute || it.startsWith("$absolute/") }.toSet(),
-            ) }
+            _state.update { st ->
+                val dropped = { key: String -> key == absolute || key.startsWith("$absolute/") }
+                rebuild(
+                    st.copy(
+                        editing = st.editing?.takeIf { e ->
+                            val p = e.file.absolutePath
+                            p != absolute && !p.startsWith("$absolute/")
+                        },
+                        expanded = st.expanded.filterNot(dropped).toSet(),
+                        children = st.children.filterKeys { !dropped(it) },
+                    ),
+                )
+            }
             if (project?.let { it.absolutePath == absolute || it.absolutePath.startsWith("$absolute/") } == true) {
                 project = null
                 publishProject(null)
@@ -287,16 +406,24 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
 
     /** Rename a workspace file or directory within its parent (F-007). */
     fun renameEntry(entry: FileEntry, newName: String) {
-        val oldPath = entry.file.absolutePath
         task {
             val dest = files.rename(entry.file, newName)
-            val newPath = dest.absolutePath
+            val oldPath = entry.file.absolutePath
             // The old editor snapshot (hash) is tied to the old path.
             drafts.readEditor()?.let { d -> if (d.path == oldPath) drafts.clearEditor() }
-            _state.update { st -> st.copy(
-                editing = st.editing?.takeIf { it.file.absolutePath != oldPath },
-                expanded = st.expanded.map { if (it == oldPath) newPath else it }.toSet(),
-            ) }
+            _state.update { st ->
+                // Cached listings under the old path prefix hold stale File
+                // objects: drop the subtree (the trailing refresh reloads the
+                // affected parents) and let the user expand the new name.
+                val dropped = { key: String -> key == oldPath || key.startsWith("$oldPath/") }
+                rebuild(
+                    st.copy(
+                        editing = st.editing?.takeIf { it.file.absolutePath != oldPath },
+                        expanded = st.expanded.filterNot(dropped).toSet(),
+                        children = st.children.filterKeys { !dropped(it) },
+                    ),
+                )
+            }
             if (project?.absolutePath == oldPath) {
                 project = dest
                 publishProject(dest)

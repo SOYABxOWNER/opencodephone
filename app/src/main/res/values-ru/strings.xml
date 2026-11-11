@@ -144,6 +144,7 @@
     <string name="terminal_restart">Перезапуск шелла</string>
     <string name="terminal_input_hint">команда шелла…</string>
     <string name="terminal_run">Выполнить</string>
+    <string name="terminal_copy_all">Скопировать весь вывод</string>
 
     <!-- Settings -->
     <string name="settings_subtitle">Сервер, провайдеры и окружение</string>
@@ -218,6 +219,10 @@
     <string name="env_service_running">Сервер OpenCode активен на порту %1$d</string>
     <string name="env_service_failed">Ошибка сервера OpenCode: %1$s</string>
     <string name="env_service_stopped">Сервер OpenCode остановлен</string>
+    <string name="env_service_task_running">Задача агента выполняется…</string>
+    <string name="env_service_task_done">Задача агента выполнена</string>
+    <string name="agent_status_idle">Запущенных задач нет</string>
+    <string name="nav_open_menu">Открыть меню навигации</string>
     <string name="settings_server_restart">Запустить / перезапустить сервер</string>
     <string name="settings_remote_security">Удалённые хосты используют HTTPS с проверкой сертификата. Введите имя хоста или IP, не URL. Для HTTP-сервера используйте защищённый туннель к localhost.</string>
     <string name="startup_loading">Открытие защищённых настроек…</string>
@@ -286,6 +291,10 @@
     <string name="files_actions_file_hint">Выберите действие для файла.</string>
     <string name="files_actions_dir_hint">Выберите действие для папки.</string>
     <string name="files_row_actions">Действия с файлом</string>
+    <string name="files_show_hidden">Показать скрытые файлы</string>
+    <string name="files_hide_hidden">Скрыть скрытые файлы</string>
+    <string name="files_folder_unreadable">Папку %1$s не удалось прочитать. Нажмите, чтобы повторить.</string>
+    <string name="files_child_count">%1$d эл.</string>
     <string name="chat_project_chip">Проект: %1$s</string>
     <string name="chat_attach_remote_unsupported">В режиме удалённого сервера можно прикреплять только текстовые файлы до %1$d КБ — сервер не может читать файлы с телефона. Для бинарных файлов нужно локальное окружение.</string>
     <string name="settings_backup_header">Резервная копия настроек</string>

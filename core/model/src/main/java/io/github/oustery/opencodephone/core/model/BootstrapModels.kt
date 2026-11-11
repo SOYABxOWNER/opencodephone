@@ -76,19 +76,20 @@ object Pins {
     const val PROOT_VERSION: String = "termux-52d65a4dc140-android2"
 
     /**
-     * Pre-resolved toolset tarballs (git, curl, ripgrep and their dependency
-     * closure) published as assets of the app release. Downloaded and
+     * Pre-resolved toolset tarballs (git, curl, ripgrep, less, procps, jq,
+     * fd-find, tree, zip, unzip, python3 and their dependency closure)
+     * published as assets of a dedicated toolset release. Downloaded and
      * extracted app-side so bootstrap never has to run apt/dpkg inside proot
      * (Android 12+ kills high-CPU child processes — see ADR-008).
      */
     const val TOOLSET_URL_PREFIX: String =
-        "https://github.com/oustery/opencodephone/releases/download/v0.1.1/toolset-"
+        "https://github.com/oustery/opencodephone/releases/download/toolset-v1/toolset-"
     const val TOOLSET_URL_SUFFIX: String = ".tar.gz"
 
     /** sha256 of each toolset tarball, keyed by Debian architecture. */
     val TOOLSET_SHA256: Map<String, String> = mapOf(
-        "arm64" to "98e492bd5469a7591092097a428af77329a5b240a5946e64b940196811a9b706",
-        "arm" to "34e94b84a0abf29f6e799d257e16bae3d62dc01866f3df601a320d629e3fe5e6",
-        "amd64" to "565a139ff1bbeabb03a3ffb0a7900c586268d1dd999f88cd2bf25c3f355b79f9",
+        "arm64" to "d965e982a147854ec1ed22690437d9657bbf501c8668432589b76fc627cbdc14",
+        "arm" to "e30509886e141bbc2dd05042a3b4d8f065d1b118e03262adf7f4851cb3f22acc",
+        "amd64" to "7a498476f70314436ed824ecdc84c294e3194d2d1dac556b3fd560afb7374106",
     )
 }

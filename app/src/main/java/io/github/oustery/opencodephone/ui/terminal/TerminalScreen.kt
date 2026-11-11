@@ -24,13 +24,16 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -41,6 +44,7 @@ import io.github.oustery.opencodephone.AppGraph
 import io.github.oustery.opencodephone.R
 import io.github.oustery.opencodephone.ScreenBody
 import io.github.oustery.opencodephone.ScreenHeader
+import io.github.oustery.opencodephone.core.designsystem.CodeTypography
 import io.github.oustery.opencodephone.core.designsystem.OcChipTone
 import io.github.oustery.opencodephone.core.designsystem.OcEmptyState
 import io.github.oustery.opencodephone.core.designsystem.OcStatusChip
@@ -50,6 +54,7 @@ import io.github.oustery.opencodephone.ui.common.VmFactory
 fun TerminalScreen(graph: AppGraph) {
     val vm: TerminalViewModel = viewModel(factory = VmFactory.of { TerminalViewModel(graph) })
     val state by vm.state.collectAsStateWithLifecycle()
+    val clipboard = LocalClipboardManager.current
 
     LaunchedEffect(Unit) { vm.start() }
 
@@ -57,6 +62,20 @@ fun TerminalScreen(graph: AppGraph) {
         ScreenHeader(
             title = stringResource(R.string.tab_terminal),
             actions = {
+                TextButton(onClick = { vm.zoomOut() }) {
+                    Text("A-", style = MaterialTheme.typography.labelLarge)
+                }
+                TextButton(onClick = { vm.zoomIn() }) {
+                    Text("A+", style = MaterialTheme.typography.labelLarge)
+                }
+                IconButton(onClick = {
+                    clipboard.setText(AnnotatedString(vm.outputText()))
+                }) {
+                    Icon(
+                        painterResource(R.drawable.ic_copy),
+                        contentDescription = stringResource(R.string.terminal_copy_all),
+                    )
+                }
                 IconButton(onClick = { vm.clear() }) {
                     Icon(
                         painterResource(R.drawable.ic_clear_output),
@@ -97,7 +116,10 @@ fun TerminalScreen(graph: AppGraph) {
                         SelectionContainer {
                             Text(
                                 text = line,
-                                style = io.github.oustery.opencodephone.core.designsystem.CodeTypography.output,
+                                style = CodeTypography.output.copy(
+                                    fontSize = CodeTypography.output.fontSize * state.fontScale,
+                                    lineHeight = CodeTypography.output.lineHeight * state.fontScale,
+                                ),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
@@ -132,6 +154,24 @@ fun TerminalScreen(graph: AppGraph) {
                 }
             }
 
+            if (state.history.isNotEmpty()) {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(state.history) { command ->
+                        // Recall fills the composer for editing instead of
+                        // firing blindly — safer for destructive commands.
+                        SuggestionChip(
+                            onClick = { vm.recall(command) },
+                            label = {
+                                Text(command, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                            },
+                        )
+                    }
+                }
+            }
+
             LazyRow(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -160,7 +200,9 @@ fun TerminalScreen(graph: AppGraph) {
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                     keyboardActions = KeyboardActions(onSend = { vm.send() }),
-                    textStyle = io.github.oustery.opencodephone.core.designsystem.CodeTypography.editor,
+                    textStyle = CodeTypography.editor.copy(
+                        fontSize = CodeTypography.editor.fontSize * state.fontScale,
+                    ),
                     shape = MaterialTheme.shapes.small,
                 )
                 // Primary action keeps the same filled emphasis as the chat
@@ -182,7 +224,11 @@ fun TerminalScreen(graph: AppGraph) {
 private val QUICK_COMMANDS = listOf(
     "ls -la",
     "git status",
+    "git log --oneline -5",
     "uname -a",
     "df -h",
+    "rg --version",
+    "python3 --version",
+    "node --version",
     "opencode --version",
 )
