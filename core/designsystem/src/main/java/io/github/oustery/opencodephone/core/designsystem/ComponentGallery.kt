@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 
@@ -13,6 +14,17 @@ fun ComponentGallery() {
     Surface {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             OcSectionHeader("OpenCodePhone")
+            OcGroupCard(
+                title = "Server & connection",
+                summary = "opencode serve :4096",
+                icon = painterResource(R.drawable.ic_chevron_down),
+                onClick = {},
+            )
+            OcTwoPane(
+                showDetail = true,
+                listPane = { OcSectionHeader("List pane") },
+                detailPane = { OcSectionHeader("Detail pane") },
+            )
             OcActionChip("glm-5.3-flash-free", "Choose model", onClick = {})
             OcStatusChip("Connected", tone = OcChipTone.PRIMARY)
             OcInfoRow("Рабочая папка", "/data/user/0/io.github.oustery.opencodephone/files/workspace")

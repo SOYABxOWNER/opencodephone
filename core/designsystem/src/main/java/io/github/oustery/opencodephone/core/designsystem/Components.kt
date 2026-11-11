@@ -27,15 +27,20 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.MaterialShapes
@@ -66,6 +71,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.scale
@@ -443,6 +449,149 @@ fun OcSkeletonRows(
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         repeat(rows) { index ->
             OcSkeletonRow(height = rowHeight, widthFraction = if (index % 3 == 2) 0.6f else 1f)
+        }
+    }
+}
+
+/**
+ * Expressive entry row of a grouped settings root (the Android-Settings
+ * pattern): a MaterialShapes emblem carries the group icon, the summary line
+ * previews the live value underneath, and the whole card is one tap target.
+ * [selected] tints the card while the group's page is open next to it in the
+ * two-pane layout.
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+fun OcGroupCard(
+    title: String,
+    summary: String,
+    icon: Painter,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    selected: Boolean = false,
+) {
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        color = if (selected) colors.secondaryContainer else colors.surfaceContainerLow,
+        contentColor = if (selected) colors.onSecondaryContainer else colors.onSurface,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            // Static expressive emblem: the same shape language as the empty
+            // states (OcShapeEmblem) at entry-row scale.
+            Surface(
+                modifier = Modifier.size(44.dp),
+                shape = MaterialShapes.Cookie9Sided.toShape(),
+                color = if (selected) colors.primaryContainer else colors.surfaceContainerHighest,
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        icon,
+                        contentDescription = null,
+                        modifier = Modifier.size(22.dp),
+                        tint = if (selected) colors.onPrimaryContainer else colors.onSurfaceVariant,
+                    )
+                }
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(title, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    summary,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            // Down-chevron rotated to point right (the drawer-disclosure glyph).
+            Icon(
+                painterResource(R.drawable.ic_chevron_down),
+                contentDescription = null,
+                modifier = Modifier.size(20.dp).rotate(270f),
+                tint = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/**
+ * Scaffold of one settings sub-page: expressive collapsing title with a
+ * trailing back arrow ([onBack]; when null — e.g. the root of the two-pane
+ * layout — no navigation icon is rendered) over a plain body slot.
+ * The body owns its scrolling and system-bar padding, so screens keep their
+ * existing ScreenBody/NestedScroll structure.
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+fun OcPageScaffold(
+    title: String,
+    backContentDescription: String?,
+    onBack: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+    subtitle: String? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    Column(modifier = modifier.fillMaxSize().nestedScroll(scrollBehavior.nestedScrollConnection)) {
+        LargeFlexibleTopAppBar(
+            title = { Text(title) },
+            subtitle = subtitle?.let { hint -> { Text(hint) } },
+            navigationIcon = {
+                if (onBack != null && backContentDescription != null) {
+                    IconButton(onClick = onBack) {
+                        // Down-chevron rotated to point left (back).
+                        Icon(
+                            painterResource(R.drawable.ic_chevron_down),
+                            contentDescription = backContentDescription,
+                            modifier = Modifier.rotate(90f),
+                        )
+                    }
+                }
+            },
+            scrollBehavior = scrollBehavior,
+        )
+        content()
+    }
+}
+
+/** Width at which [OcTwoPane] switches from stacked panes to side-by-side. */
+val OcTwoPaneMinWidth = 720.dp
+
+/**
+ * List-detail container (the wide-screen pattern of the settings root):
+ * below [OcTwoPaneMinWidth] it shows exactly one pane — [listPane] while
+ * [showDetail] is false, [detailPane] once it is true; at or above the
+ * threshold both panes sit side by side with a hairline divider, so the
+ * list stays visible while a detail page is open. The caller owns the
+ * selection state and keeps it uniform across both modes.
+ */
+@Composable
+fun OcTwoPane(
+    showDetail: Boolean,
+    listPane: @Composable () -> Unit,
+    detailPane: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        if (maxWidth >= OcTwoPaneMinWidth) {
+            Row(modifier = Modifier.fillMaxSize()) {
+                Box(modifier = Modifier.width(340.dp)) { listPane() }
+                Box(
+                    modifier = Modifier.fillMaxHeight().width(1.dp)
+                        .background(MaterialTheme.colorScheme.outlineVariant),
+                ) {}
+                Box(modifier = Modifier.weight(1f)) { detailPane() }
+            }
+        } else if (showDetail) {
+            detailPane()
+        } else {
+            listPane()
         }
     }
 }
