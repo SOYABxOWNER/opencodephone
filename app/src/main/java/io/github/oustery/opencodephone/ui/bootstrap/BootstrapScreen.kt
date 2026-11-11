@@ -1,6 +1,7 @@
 package io.github.oustery.opencodephone.ui.bootstrap
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularWavyProgressIndicator
@@ -33,9 +35,12 @@ import io.github.oustery.opencodephone.AppGraph
 import io.github.oustery.opencodephone.R
 import io.github.oustery.opencodephone.core.designsystem.OcChipTone
 import io.github.oustery.opencodephone.core.designsystem.AppFonts
+import io.github.oustery.opencodephone.core.designsystem.OcDisclosure
+import io.github.oustery.opencodephone.core.designsystem.OcShapeEmblem
 import io.github.oustery.opencodephone.core.designsystem.OcStatusChip
 import io.github.oustery.opencodephone.core.model.BootstrapPhase
 import io.github.oustery.opencodephone.core.settings.SetupChoice
+import kotlin.math.roundToInt
 
 /**
  * One-time environment setup wizard. Wavy progress indicators are the
@@ -63,7 +68,17 @@ fun BootstrapScreen(graph: AppGraph) {
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Spacer(Modifier.height(48.dp))
+        Spacer(Modifier.height(24.dp))
+        // Expressive hero: the emblem morphs only while setup is actually
+        // running — a finished or failed setup stays quiet (E-015 rule).
+        OcShapeEmblem(
+            icon = painterResource(R.drawable.ic_launcher_foreground),
+            animated = state.phase != BootstrapPhase.FAILED && state.phase != BootstrapPhase.READY,
+            size = 84.dp,
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+        )
+        Spacer(Modifier.height(12.dp))
         Text(
             text = stringResource(R.string.app_name),
             style = MaterialTheme.typography.displaySmall,
@@ -76,7 +91,7 @@ fun BootstrapScreen(graph: AppGraph) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
-        Spacer(Modifier.height(40.dp))
+        Spacer(Modifier.height(32.dp))
 
         if (state.phase == BootstrapPhase.NOT_STARTED && setupChoice == SetupChoice.UNSET) {
             // Remote-first onboarding (functional audit F-022): before any
@@ -135,24 +150,26 @@ fun BootstrapScreen(graph: AppGraph) {
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                            // Raw setup log collapsed behind a disclosure: the
+                            // failure headline stays readable, the details are
+                            // one tap away (mirrors the tool-card pattern).
                             if (state.log.isNotEmpty()) {
-                                Surface(
-                                    shape = MaterialTheme.shapes.small,
-                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                    modifier = Modifier.fillMaxWidth(),
+                                OcDisclosure(
+                                    title = stringResource(R.string.bootstrap_details),
+                                    expandedDescription = stringResource(R.string.state_expanded),
+                                    collapsedDescription = stringResource(R.string.state_collapsed),
                                 ) {
-                                    Column(modifier = Modifier.padding(12.dp)) {
-                                        Text(
-                                            text = stringResource(R.string.bootstrap_details),
-                                            style = MaterialTheme.typography.labelMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                        Spacer(Modifier.height(6.dp))
+                                    Surface(
+                                        shape = MaterialTheme.shapes.small,
+                                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
                                         Text(
                                             text = state.log.takeLast(12).joinToString("\n"),
                                             style = MaterialTheme.typography.bodySmall,
                                             fontFamily = AppFonts.Code,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(12.dp),
                                         )
                                     }
                                 }
@@ -168,14 +185,25 @@ fun BootstrapScreen(graph: AppGraph) {
                         }
                         else -> {
                             val progress = state.progress
-                            if (progress != null) {
-                                LinearWavyProgressIndicator(
-                                    progress = { progress.coerceIn(0f, 1f) },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    wavelength = 28.dp,
-                                )
-                            } else {
-                                LinearWavyProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                if (progress != null) {
+                                    LinearWavyProgressIndicator(
+                                        progress = { progress.coerceIn(0f, 1f) },
+                                        modifier = Modifier.weight(1f),
+                                        wavelength = 28.dp,
+                                    )
+                                    Text(
+                                        text = "${(progress.coerceIn(0f, 1f) * 100).roundToInt()}%",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                } else {
+                                    LinearWavyProgressIndicator(modifier = Modifier.weight(1f))
+                                }
                             }
                             Text(
                                 text = state.label.ifEmpty { stringResource(R.string.bootstrap_preparing) },
@@ -270,16 +298,21 @@ private fun StepRow(visual: StepVisual, label: String, order: Int) {
             StepVisual.FAILED -> MaterialTheme.colorScheme.error
             StepVisual.PENDING -> MaterialTheme.colorScheme.outlineVariant
         }
+        // Circular step badge: the number sits in a round emblem instead of
+        // a rounded chip, keeping the step list in the shape language of the
+        // entry rows.
         Surface(
-            shape = MaterialTheme.shapes.small,
+            shape = CircleShape,
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            modifier = Modifier.size(30.dp),
         ) {
-            Text(
-                text = order.toString(),
-                style = MaterialTheme.typography.labelMedium,
-                color = color,
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-            )
+            Box(contentAlignment = Alignment.Center) {
+                Text(
+                    text = order.toString(),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = color,
+                )
+            }
         }
         Column {
             Text(
