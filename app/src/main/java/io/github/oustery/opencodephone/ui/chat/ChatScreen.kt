@@ -24,6 +24,7 @@ import io.github.oustery.opencodephone.core.designsystem.AppFonts
 import io.github.oustery.opencodephone.core.designsystem.MarkdownDefaults
 import io.github.oustery.opencodephone.core.designsystem.MarkdownText
 import io.github.oustery.opencodephone.core.designsystem.OcDisclosure
+import io.github.oustery.opencodephone.core.designsystem.OcToolCard
 import io.github.oustery.opencodephone.core.designsystem.AppMessageShapes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -39,6 +40,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.selection.selectable
@@ -59,6 +61,7 @@ import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -242,9 +245,13 @@ private fun ChatTimeline(vm: ChatViewModel, state: ChatUiState) {
                     }
                 }
             }
-            items(state.messages, key = { it.id }) { message ->
+            itemsIndexed(state.messages, key = { _, it -> it.id }) { index, message ->
                 MessageBubble(
                     message,
+                    // Messages of one role run read as a single block: the
+                    // continuation bubbles below the first keep a tighter
+                    // gap instead of the full inter-message spacing.
+                    compact = index > 0 && state.messages[index - 1].role == message.role,
                     onCopy = { text -> clipboard.setText(AnnotatedString(text)) },
                     onRevert = if (message.role == "user") {
                         { revertFor = message }
@@ -313,22 +320,49 @@ private fun ChatTimeline(vm: ChatViewModel, state: ChatUiState) {
                     contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                 ) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(
-                            text = stringResource(R.string.chat_permission_title, request.type),
-                            style = MaterialTheme.typography.titleSmall,
-                        )
+                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            // Shield emblem: the ask reads as a security gate,
+                            // not as another timeline entry (same shape language
+                            // as the entry-row emblems).
+                            Surface(
+                                shape = MaterialTheme.shapes.small,
+                                color = MaterialTheme.colorScheme.tertiary,
+                            ) {
+                                Icon(
+                                    painterResource(R.drawable.ic_shield),
+                                    contentDescription = null,
+                                    modifier = Modifier.padding(6.dp).size(20.dp),
+                                    tint = MaterialTheme.colorScheme.onTertiary,
+                                )
+                            }
+                            Text(
+                                text = stringResource(R.string.chat_permission_title, request.type),
+                                style = MaterialTheme.typography.titleSmall,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
                         // The shell command (or path) the agent wants to run,
                         // when the tool carries one in `metadata.command`.
                         // A local copy is required: `command` is declared in
                         // another module, so no smart cast applies.
                         val command = request.command
                         if (!command.isNullOrBlank()) {
-                            Text(
-                                command,
-                                style = MaterialTheme.typography.bodySmall,
-                                fontFamily = AppFonts.Code,
-                            )
+                            Surface(
+                                shape = MaterialTheme.shapes.small,
+                                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(
+                                    command,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontFamily = AppFonts.Code,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                )
+                            }
                         } else if (request.title.isNotBlank()) {
                             Text(request.title, style = MaterialTheme.typography.bodySmall)
                         }
@@ -443,100 +477,123 @@ private fun ChatInput(vm: ChatViewModel, state: ChatUiState) {
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         vm.attachUri(uri)
     }
-    androidx.compose.foundation.layout.Column(modifier = Modifier.fillMaxWidth()) {
-        // Shared project context (functional audit F-001) next to the agent
-        // picker (functional audit F-006), both above the composer.
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+    // One docked composer: chips, attachments and the text field live in a
+    // single rounded surface so the action zone reads as one control instead
+    // of stacked strips (mirrors the terminal composer).
+    androidx.compose.foundation.layout.Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
+        Surface(
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            modifier = Modifier.fillMaxWidth(),
         ) {
-            state.projectContext?.let { project ->
-                OcStatusChip(
-                    text = stringResource(R.string.chat_project_chip, project.substringAfterLast('/')),
-                    tone = OcChipTone.NEUTRAL,
-                )
-            }
-            AgentChip(
-                agentName = state.agentName,
-                onClick = { vm.showAgents(true) },
-            )
-        }
-        if (state.attachments.isNotEmpty()) {
-            androidx.compose.foundation.lazy.LazyRow(
-                modifier = Modifier.fillMaxWidth(),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            androidx.compose.foundation.layout.Column(
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                items(state.attachments, key = { it.id }) { file ->
-                    AttachmentChip(file) { vm.removeAttachment(file.id) }
-                }
-            }
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            IconButton(
-                onClick = { picker.launch(arrayOf("*/*")) },
-                enabled = !state.busy,
-                modifier = Modifier.padding(bottom = 2.dp),
-            ) {
-                Icon(
-                    painterResource(R.drawable.ic_attach),
-                    contentDescription = stringResource(R.string.chat_attach),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            OutlinedTextField(
-                value = state.draft,
-                onValueChange = { vm.updateDraft(it) },
-                modifier = Modifier.weight(1f),
-                placeholder = { Text(stringResource(R.string.chat_input_hint)) },
-                shape = AppMessageShapes.composer,
-                maxLines = 4,
-            )
-            // Colors morph between send/stop instead of snapping; the icon
-            // crossfades inside a stable frame (M3E audit E-004).
-            val haptics = LocalHapticFeedback.current
-            val sendContainer by animateColorAsState(
-                targetValue = if (state.busy) {
-                    MaterialTheme.colorScheme.errorContainer
-                } else {
-                    MaterialTheme.colorScheme.primary
-                },
-                animationSpec = tween(durationMillis = 220),
-                label = "send-button-container",
-            )
-            val sendContent by animateColorAsState(
-                targetValue = if (state.busy) {
-                    MaterialTheme.colorScheme.onErrorContainer
-                } else {
-                    MaterialTheme.colorScheme.onPrimary
-                },
-                animationSpec = tween(durationMillis = 220),
-                label = "send-button-content",
-            )
-            FilledIconButton(
-                onClick = {
-                    // Send/abort confirmation (M3E audit E-010).
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                    if (state.busy) vm.abort() else vm.send()
-                },
-                colors = IconButtonDefaults.filledIconButtonColors(
-                    containerColor = sendContainer,
-                    contentColor = sendContent,
-                ),
-            ) {
-                AnimatedContent(targetState = state.busy, label = "send-stop-icon") { busy ->
-                    Icon(
-                        painterResource(if (busy) R.drawable.ic_stop else R.drawable.ic_send),
-                        contentDescription = if (busy) {
-                            stringResource(R.string.chat_stop)
-                        } else {
-                            stringResource(R.string.chat_send)
-                        },
+                // Shared project context (functional audit F-001) next to the agent
+                // picker (functional audit F-006).
+                Row(
+                    modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    state.projectContext?.let { project ->
+                        OcStatusChip(
+                            text = stringResource(R.string.chat_project_chip, project.substringAfterLast('/')),
+                            tone = OcChipTone.NEUTRAL,
+                        )
+                    }
+                    AgentChip(
+                        agentName = state.agentName,
+                        onClick = { vm.showAgents(true) },
                     )
+                }
+                if (state.attachments.isNotEmpty()) {
+                    androidx.compose.foundation.lazy.LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        items(state.attachments, key = { it.id }) { file ->
+                            AttachmentChip(file) { vm.removeAttachment(file.id) }
+                        }
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.Bottom,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    IconButton(
+                        onClick = { picker.launch(arrayOf("*/*")) },
+                        enabled = !state.busy,
+                        modifier = Modifier.padding(bottom = 2.dp),
+                    ) {
+                        Icon(
+                            painterResource(R.drawable.ic_attach),
+                            contentDescription = stringResource(R.string.chat_attach),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    OutlinedTextField(
+                        value = state.draft,
+                        onValueChange = { vm.updateDraft(it) },
+                        modifier = Modifier.weight(1f),
+                        placeholder = { Text(stringResource(R.string.chat_input_hint)) },
+                        maxLines = 4,
+                        shape = MaterialTheme.shapes.extraLarge,
+                        // The dock carries the chrome; the field itself stays
+                        // quiet (border appears only on focus).
+                        colors = OutlinedTextFieldDefaults.colors(
+                            unfocusedBorderColor = Color.Transparent,
+                            focusedBorderColor = MaterialTheme.colorScheme.outline,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedContainerColor = Color.Transparent,
+                        ),
+                    )
+                    // Colors morph between send/stop instead of snapping; the icon
+                    // crossfades inside a stable frame (M3E audit E-004).
+                    val haptics = LocalHapticFeedback.current
+                    val sendContainer by animateColorAsState(
+                        targetValue = if (state.busy) {
+                            MaterialTheme.colorScheme.errorContainer
+                        } else {
+                            MaterialTheme.colorScheme.primary
+                        },
+                        animationSpec = tween(durationMillis = 220),
+                        label = "send-button-container",
+                    )
+                    val sendContent by animateColorAsState(
+                        targetValue = if (state.busy) {
+                            MaterialTheme.colorScheme.onErrorContainer
+                        } else {
+                            MaterialTheme.colorScheme.onPrimary
+                        },
+                        animationSpec = tween(durationMillis = 220),
+                        label = "send-button-content",
+                    )
+                    FilledIconButton(
+                        onClick = {
+                            // Send/abort confirmation (M3E audit E-010).
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            if (state.busy) vm.abort() else vm.send()
+                        },
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = sendContainer,
+                            contentColor = sendContent,
+                        ),
+                        modifier = Modifier.padding(bottom = 4.dp),
+                    ) {
+                        AnimatedContent(targetState = state.busy, label = "send-stop-icon") { busy ->
+                            Icon(
+                                painterResource(if (busy) R.drawable.ic_stop else R.drawable.ic_send),
+                                contentDescription = if (busy) {
+                                    stringResource(R.string.chat_stop)
+                                } else {
+                                    stringResource(R.string.chat_send)
+                                },
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -602,7 +659,12 @@ private fun formatAttachmentSize(bytes: Long): String {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MessageBubble(message: UiMessage, onCopy: (String) -> Unit, onRevert: (() -> Unit)?) {
+private fun MessageBubble(
+    message: UiMessage,
+    compact: Boolean,
+    onCopy: (String) -> Unit,
+    onRevert: (() -> Unit)?,
+) {
     val isUser = message.role == "user"
     val revertHint = stringResource(R.string.chat_revert_action)
     BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -636,8 +698,8 @@ private fun MessageBubble(message: UiMessage, onCopy: (String) -> Unit, onRevert
                 ),
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = if (compact) 5.dp else 8.dp),
+                verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 6.dp),
             ) {
                 message.parts.forEach { part -> PartView(part, markdown = !isUser) }
                 // One compact action row per message instead of one under every
@@ -750,71 +812,58 @@ private fun AttachmentPartView(part: UiPart.FileAttachment) {
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun ToolCard(part: UiPart.Tool) {
-    Surface(
-        shape = MaterialTheme.shapes.small,
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(
-                    painterResource(R.drawable.ic_tab_terminal),
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = MaterialTheme.colorScheme.primary,
-                )
-                Text(part.tool, style = MaterialTheme.typography.labelLarge)
-                val statusTone = when (part.status) {
-                    "completed" -> OcChipTone.PRIMARY
-                    "error" -> OcChipTone.ERROR
-                    "pending", "running" -> OcChipTone.TERTIARY
-                    else -> OcChipTone.NEUTRAL
-                }
-                // Localized chip label instead of the raw English server status
-                // (UI audit C1); unknown statuses still render verbatim.
-                val statusLabel = when (part.status) {
-                    "completed" -> stringResource(R.string.chat_status_completed)
-                    "error" -> stringResource(R.string.chat_status_error)
-                    "pending" -> stringResource(R.string.chat_status_pending)
-                    "running" -> stringResource(R.string.chat_status_running)
-                    else -> part.status
-                }
-                OcStatusChip(text = statusLabel, tone = statusTone)
-            }
-            // Local copies are required: title/output live in another Gradle
-            // module, so the compiler will not smart-cast the properties.
-            val title = part.title
-            if (title != null) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            val output = part.output
-            if (!output.isNullOrBlank()) {
-                OcDisclosure(
-                    title = stringResource(R.string.chat_tool_output),
-                    expandedDescription = stringResource(R.string.state_expanded),
-                    collapsedDescription = stringResource(R.string.state_collapsed),
-                ) {
+    val statusTone = when (part.status) {
+        "completed" -> OcChipTone.PRIMARY
+        "error" -> OcChipTone.ERROR
+        "pending", "running" -> OcChipTone.TERTIARY
+        else -> OcChipTone.NEUTRAL
+    }
+    // Localized chip label instead of the raw English server status
+    // (UI audit C1); unknown statuses still render verbatim.
+    val statusLabel = when (part.status) {
+        "completed" -> stringResource(R.string.chat_status_completed)
+        "error" -> stringResource(R.string.chat_status_error)
+        "pending" -> stringResource(R.string.chat_status_pending)
+        "running" -> stringResource(R.string.chat_status_running)
+        else -> part.status
+    }
+    // Collapsed by default (one quiet line per call); the header expands to
+    // the mono output/error block (M3E audit E-003 chevron, E-010 haptic).
+    OcToolCard(
+        tool = part.tool,
+        statusLabel = statusLabel,
+        statusTone = statusTone,
+        icon = painterResource(R.drawable.ic_tab_terminal),
+        title = part.title,
+        expandedDescription = stringResource(R.string.state_expanded),
+        collapsedDescription = stringResource(R.string.state_collapsed),
+        content = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                // Local copies are required: title/output live in another Gradle
+                // module, so the compiler will not smart-cast the properties.
+                val output = part.output
+                if (!output.isNullOrBlank()) {
+                    Text(
+                        stringResource(R.string.chat_tool_output),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     // Copyable without a toolbar (M3E audit E-011).
                     TruncatedCodeText(output, MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-            }
-            // Failure explanation instead of a bare error chip (F-012).
-            val error = part.error
-            if (part.status == "error" && !error.isNullOrBlank()) {
-                OcDisclosure(
-                    title = stringResource(R.string.chat_tool_error),
-                    expandedDescription = stringResource(R.string.state_expanded),
-                    collapsedDescription = stringResource(R.string.state_collapsed),
-                ) {
+                // Failure explanation instead of a bare error chip (F-012).
+                val error = part.error
+                if (part.status == "error" && !error.isNullOrBlank()) {
+                    Text(
+                        stringResource(R.string.chat_tool_error),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.error,
+                    )
                     TruncatedCodeText(error, MaterialTheme.colorScheme.error)
                 }
             }
-        }
-    }
+        },
+    )
 }
 
 /** Cap before the tool output/error preview is cut (UI audit C3). */
@@ -1444,48 +1493,58 @@ private fun AgentRow(name: String?, isSelected: Boolean, onClick: () -> Unit) {
 /** The agent's task plan for the active session (functional audit F-010). */
 @Composable
 private fun TodosCard(todos: List<TodoItem>) {
-    Surface(
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+    // Collapsed by default with a done/total counter in the header: the plan
+    // stays visible without pushing the timeline away.
+    val done = todos.count { it.status == "completed" || it.status == "cancelled" }
+    OcDisclosure(
+        title = stringResource(R.string.chat_todos_title) + " · " +
+            stringResource(R.string.chat_todos_progress, done, todos.size),
+        expandedDescription = stringResource(R.string.state_expanded),
+        collapsedDescription = stringResource(R.string.state_collapsed),
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
     ) {
-        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(stringResource(R.string.chat_todos_title), style = MaterialTheme.typography.titleSmall)
-            todos.forEach { todo ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    val done = todo.status == "completed" || todo.status == "cancelled"
-                    val (icon, tint) = when (todo.status) {
-                        "completed" -> R.drawable.ic_check to MaterialTheme.colorScheme.primary
-                        "in_progress" -> R.drawable.ic_refresh to MaterialTheme.colorScheme.tertiary
-                        "cancelled" -> R.drawable.ic_close to MaterialTheme.colorScheme.onSurfaceVariant
-                        else -> R.drawable.ic_chevron_right to MaterialTheme.colorScheme.onSurfaceVariant
+        Surface(
+            shape = MaterialTheme.shapes.medium,
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                todos.forEach { todo ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        val isDone = todo.status == "completed" || todo.status == "cancelled"
+                        val (icon, tint) = when (todo.status) {
+                            "completed" -> R.drawable.ic_check to MaterialTheme.colorScheme.primary
+                            "in_progress" -> R.drawable.ic_refresh to MaterialTheme.colorScheme.tertiary
+                            "cancelled" -> R.drawable.ic_close to MaterialTheme.colorScheme.onSurfaceVariant
+                            else -> R.drawable.ic_chevron_right to MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                        // Localized state for TalkBack instead of the raw English
+                        // server status (UI/UX stage D).
+                        val statusLabel = when (todo.status) {
+                            "completed" -> stringResource(R.string.chat_todo_done)
+                            "in_progress" -> stringResource(R.string.chat_todo_in_progress)
+                            "cancelled" -> stringResource(R.string.chat_todo_cancelled)
+                            else -> stringResource(R.string.chat_todo_pending)
+                        }
+                        Icon(
+                            painterResource(icon),
+                            contentDescription = statusLabel,
+                            modifier = Modifier.size(16.dp),
+                            tint = tint,
+                        )
+                        Text(
+                            todo.content,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (isDone) {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            },
+                        )
                     }
-                    // Localized state for TalkBack instead of the raw English
-                    // server status (UI/UX stage D).
-                    val statusLabel = when (todo.status) {
-                        "completed" -> stringResource(R.string.chat_todo_done)
-                        "in_progress" -> stringResource(R.string.chat_todo_in_progress)
-                        "cancelled" -> stringResource(R.string.chat_todo_cancelled)
-                        else -> stringResource(R.string.chat_todo_pending)
-                    }
-                    Icon(
-                        painterResource(icon),
-                        contentDescription = statusLabel,
-                        modifier = Modifier.size(16.dp),
-                        tint = tint,
-                    )
-                    Text(
-                        todo.content,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (done) {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        } else {
-                            MaterialTheme.colorScheme.onSurface
-                        },
-                    )
                 }
             }
         }

@@ -90,6 +90,7 @@
 
     <!-- План задач агента (функциональный аудит F-010) -->
     <string name="chat_todos_title">Задачи агента</string>
+    <string name="chat_todos_progress">%1$d из %2$d</string>
     <string name="chat_todo_pending">Ожидает</string>
     <string name="chat_todo_in_progress">В работе</string>
     <string name="chat_todo_done">Готово</string>
@@ -321,6 +322,7 @@
     <string name="terminal_empty_title">Здесь появится вывод</string>
     <string name="terminal_empty_hint">Запустите команду ниже — быстрые чипы или строка ввода.</string>
     <string name="terminal_shell_stopped">Оболочка не запущена — нажмите кнопку перезапуска выше</string>
+    <string name="terminal_shell_label">bash · Debian (proot)</string>
 
     <!-- Grouped settings (UI rework): root list of groups and sub-pages -->
     <string name="settings_group_providers_title">Аккаунт и провайдеры</string>
