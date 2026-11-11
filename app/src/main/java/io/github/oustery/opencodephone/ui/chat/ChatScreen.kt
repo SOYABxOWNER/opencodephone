@@ -21,6 +21,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import io.github.oustery.opencodephone.core.designsystem.OcActionChip
 import io.github.oustery.opencodephone.core.designsystem.AppFonts
+import io.github.oustery.opencodephone.core.designsystem.MarkdownDefaults
 import io.github.oustery.opencodephone.core.designsystem.MarkdownText
 import io.github.oustery.opencodephone.core.designsystem.OcDisclosure
 import io.github.oustery.opencodephone.core.designsystem.AppMessageShapes
@@ -215,8 +216,8 @@ private fun ChatTimeline(vm: ChatViewModel, state: ChatUiState) {
             state = listState,
             modifier = Modifier.weight(1f).fillMaxWidth(),
             reverseLayout = true,
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             if (state.messages.isEmpty() && !state.busy) {
                 item {
@@ -472,7 +473,7 @@ private fun ChatInput(vm: ChatViewModel, state: ChatUiState) {
             }
         }
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
             verticalAlignment = Alignment.Bottom,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -634,8 +635,50 @@ private fun MessageBubble(message: UiMessage, onCopy: (String) -> Unit, onRevert
                     },
                 ),
         ) {
-            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                message.parts.forEach { part -> PartView(part, onCopy, onRevert, markdown = !isUser) }
+            Column(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                message.parts.forEach { part -> PartView(part, markdown = !isUser) }
+                // One compact action row per message instead of one under every
+                // text part: a one-line answer used to spend more height on its
+                // copy button than on its text. Compactness comes from the
+                // deduplication, never from shrunk controls — the IconButtons
+                // keep their standard 48dp touch targets (UI audit A1).
+                val textCopy = message.parts
+                    .filterIsInstance<UiPart.Text>()
+                    .joinToString("\n\n") { it.text }
+                if (textCopy.isNotBlank() || onRevert != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        if (textCopy.isNotBlank()) {
+                            androidx.compose.material3.IconButton(onClick = { onCopy(textCopy) }) {
+                                Icon(
+                                    painterResource(R.drawable.ic_copy),
+                                    contentDescription = stringResource(R.string.action_copy),
+                                    modifier = Modifier.size(15.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        // Explicit revert affordance (UI audit C9): the bubble's
+                        // long-press shortcut competes with text selection on
+                        // user messages, so the guaranteed path to revert is
+                        // this button.
+                        if (onRevert != null) {
+                            androidx.compose.material3.IconButton(onClick = onRevert) {
+                                Icon(
+                                    painterResource(R.drawable.ic_revert),
+                                    contentDescription = stringResource(R.string.chat_revert_action),
+                                    modifier = Modifier.size(15.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -643,14 +686,9 @@ private fun MessageBubble(message: UiMessage, onCopy: (String) -> Unit, onRevert
 }
 
 @Composable
-private fun PartView(
-    part: UiPart,
-    onCopy: (String) -> Unit,
-    onRevert: (() -> Unit)? = null,
-    markdown: Boolean = false,
-) {
+private fun PartView(part: UiPart, markdown: Boolean = false) {
     when (part) {
-        is UiPart.Text -> Column {
+        is UiPart.Text ->
             // Agent output is markdown-first, so assistant answers render
             // through the themed expressive renderer; user drafts stay
             // verbatim plain text.
@@ -662,37 +700,6 @@ private fun PartView(
             } else {
                 SelectionText(part.text)
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-            ) {
-                // Full touch target again (UI audit A1); compactness lives in
-                // the 15dp icon, not in a shrunk button.
-                androidx.compose.material3.IconButton(
-                    onClick = { onCopy(part.text) },
-                ) {
-                    Icon(
-                        painterResource(R.drawable.ic_copy),
-                        contentDescription = stringResource(R.string.action_copy),
-                        modifier = Modifier.size(15.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                // Explicit revert affordance (UI audit C9): the bubble's
-                // long-press shortcut competes with text selection on user
-                // messages, so the guaranteed path to revert is this button.
-                if (onRevert != null) {
-                    androidx.compose.material3.IconButton(onClick = onRevert) {
-                        Icon(
-                            painterResource(R.drawable.ic_revert),
-                            contentDescription = stringResource(R.string.chat_revert_action),
-                            modifier = Modifier.size(15.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
-        }
         is UiPart.Reasoning -> OcDisclosure(
             title = stringResource(R.string.chat_reasoning),
             expandedDescription = stringResource(R.string.state_expanded),
@@ -748,7 +755,7 @@ private fun ToolCard(part: UiPart.Tool) {
         color = MaterialTheme.colorScheme.surfaceContainer,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(
                     painterResource(R.drawable.ic_tab_terminal),
@@ -842,7 +849,7 @@ private fun SelectionText(text: String) {
     androidx.compose.foundation.text.selection.SelectionContainer {
         Text(
             text = text,
-            style = MaterialTheme.typography.bodyLarge,
+            style = MarkdownDefaults.chatBody,
         )
     }
 }
