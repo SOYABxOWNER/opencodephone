@@ -163,6 +163,7 @@
     <string name="files_row_actions">File actions</string>
     <string name="files_show_hidden">Show hidden files</string>
     <string name="files_hide_hidden">Hide hidden files</string>
+    <string name="files_refresh">Refresh workspace</string>
     <string name="files_folder_unreadable">Folder %1$s cannot be read. Tap it to retry.</string>
     <string name="files_child_count">%1$d items</string>
 

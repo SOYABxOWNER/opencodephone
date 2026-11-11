@@ -293,6 +293,7 @@
     <string name="files_row_actions">Действия с файлом</string>
     <string name="files_show_hidden">Показать скрытые файлы</string>
     <string name="files_hide_hidden">Скрыть скрытые файлы</string>
+    <string name="files_refresh">Обновить рабочую папку</string>
     <string name="files_folder_unreadable">Папку %1$s не удалось прочитать. Нажмите, чтобы повторить.</string>
     <string name="files_child_count">%1$d эл.</string>
     <string name="chat_project_chip">Проект: %1$s</string>

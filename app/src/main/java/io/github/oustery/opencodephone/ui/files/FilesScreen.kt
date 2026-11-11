@@ -7,6 +7,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.safeDrawingPadding
@@ -36,6 +38,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -73,6 +76,7 @@ import io.github.oustery.opencodephone.ScreenBody
 import io.github.oustery.opencodephone.ScreenHeader
 import io.github.oustery.opencodephone.core.designsystem.OcChipTone
 import io.github.oustery.opencodephone.core.designsystem.OcEmptyState
+import io.github.oustery.opencodephone.core.designsystem.OcExpressiveSheet
 import io.github.oustery.opencodephone.core.designsystem.OcSkeletonRows
 import io.github.oustery.opencodephone.core.designsystem.OcStatusChip
 import io.github.oustery.opencodephone.core.designsystem.OcToggleableRow
@@ -95,6 +99,12 @@ fun FilesScreen(graph: AppGraph) {
         ScreenHeader(
             title = stringResource(R.string.tab_files),
             actions = {
+                IconButton(onClick = { vm.refresh() }) {
+                    Icon(
+                        painterResource(R.drawable.ic_refresh),
+                        contentDescription = stringResource(R.string.files_refresh),
+                    )
+                }
                 IconButton(onClick = { vm.toggleHidden() }) {
                     Icon(
                         painterResource(R.drawable.ic_eye),
@@ -115,9 +125,9 @@ fun FilesScreen(graph: AppGraph) {
         )
 
         ScreenBody {
-            state.gitProject?.let { Text(it, modifier = Modifier.padding(horizontal = 16.dp)) }
             state.gitBranch?.let { branch ->
                 GitBar(
+                    project = state.gitProject,
                     branch = branch,
                     changes = state.gitChanges,
                     busy = state.busy != null,
@@ -205,35 +215,29 @@ fun FilesScreen(graph: AppGraph) {
         )
     }
     actionsFor?.let { entry ->
-        AlertDialog(
-            onDismissRequest = { actionsFor = null },
-            title = { Text(entry.name) },
-            text = { Text(stringResource(if (entry.isDir) R.string.files_actions_dir_hint else R.string.files_actions_file_hint)) },
-            confirmButton = {
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    if (!entry.isDir && isPreviewable(entry.name)) {
-                        TextButton(onClick = {
-                            actionsFor = null
-                            previewFor = entry
-                        }) { Text(stringResource(R.string.files_preview)) }
-                    }
-                    if (!entry.isDir) {
-                        TextButton(onClick = {
-                            actionsFor = null
-                            shareWorkspaceFile(context, entry.file)
-                        }) { Text(stringResource(R.string.files_share)) }
-                    }
-                    TextButton(onClick = {
-                        actionsFor = null
-                        renameFor = entry
-                    }) { Text(stringResource(R.string.files_rename)) }
-                }
+        // Per-row file actions (functional audit F-007) in the app-wide
+        // expressive bottom sheet: the old alert dialog crammed four actions
+        // into confirm/dismiss slots; a sheet lists them as readable rows.
+        FileActionsSheet(
+            entry = entry,
+            showPreview = !entry.isDir && isPreviewable(entry.name),
+            showShare = !entry.isDir,
+            onDismiss = { actionsFor = null },
+            onPreview = {
+                actionsFor = null
+                previewFor = entry
             },
-            dismissButton = {
-                TextButton(onClick = {
-                    actionsFor = null
-                    deleteFor = entry
-                }) { Text(stringResource(R.string.action_delete)) }
+            onShare = {
+                actionsFor = null
+                shareWorkspaceFile(context, entry.file)
+            },
+            onRename = {
+                actionsFor = null
+                renameFor = entry
+            },
+            onDelete = {
+                actionsFor = null
+                deleteFor = entry
             },
         )
     }
@@ -306,15 +310,41 @@ fun FilesScreen(graph: AppGraph) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun GitBar(branch: String, changes: Int, busy: Boolean, onOpenCommit: () -> Unit, onPull: () -> Unit, onPush: () -> Unit) {
+private fun GitBar(
+    project: String?,
+    branch: String,
+    changes: Int,
+    busy: Boolean,
+    onOpenCommit: () -> Unit,
+    onPull: () -> Unit,
+    onPush: () -> Unit,
+) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
         shape = MaterialTheme.shapes.medium,
     ) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Project identity and branch share one line: the separate
+            // project caption above the card was pure duplication.
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                project?.let { name ->
+                    Text(
+                        name,
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                }
                 OcStatusChip(text = branch, tone = OcChipTone.PRIMARY)
+            }
+            // Action row wraps instead of clipping at large font scales.
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
                 OcStatusChip(
                     text = if (changes == 0) {
                         stringResource(R.string.git_clean)
@@ -323,8 +353,6 @@ private fun GitBar(branch: String, changes: Int, busy: Boolean, onOpenCommit: ()
                     },
                     tone = if (changes == 0) OcChipTone.NEUTRAL else OcChipTone.TERTIARY,
                 )
-            }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onOpenCommit, enabled = changes > 0) {
                     Text(stringResource(R.string.git_commit))
                 }
@@ -337,6 +365,77 @@ private fun GitBar(branch: String, changes: Int, busy: Boolean, onOpenCommit: ()
                     Text(stringResource(R.string.git_push))
                 }
             }
+        }
+    }
+}
+
+/** One readable action row of [FileActionsSheet]. */
+@Composable
+private fun SheetAction(
+    label: String,
+    onClick: () -> Unit,
+    iconRes: Int? = null,
+    tint: Color = MaterialTheme.colorScheme.onSurface,
+) {
+    TextButton(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+        iconRes?.let { res ->
+            Icon(
+                painterResource(res),
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = tint,
+            )
+            Spacer(Modifier.width(10.dp))
+        }
+        Text(label, color = tint, style = MaterialTheme.typography.bodyLarge)
+    }
+}
+
+/** Context actions of one file or folder (F-007) as an expressive sheet. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FileActionsSheet(
+    entry: FileEntry,
+    showPreview: Boolean,
+    showShare: Boolean,
+    onDismiss: () -> Unit,
+    onPreview: () -> Unit,
+    onShare: () -> Unit,
+    onRename: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    OcExpressiveSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                entry.name,
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 2,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+            Text(
+                stringResource(if (entry.isDir) R.string.files_actions_dir_hint else R.string.files_actions_file_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (showPreview) {
+                SheetAction(iconRes = R.drawable.ic_eye, label = stringResource(R.string.files_preview), onClick = onPreview)
+            }
+            if (showShare) {
+                SheetAction(label = stringResource(R.string.files_share), onClick = onShare)
+            }
+            SheetAction(iconRes = R.drawable.ic_edit, label = stringResource(R.string.files_rename), onClick = onRename)
+            SheetAction(
+                iconRes = R.drawable.ic_delete,
+                label = stringResource(R.string.action_delete),
+                onClick = onDelete,
+                tint = MaterialTheme.colorScheme.error,
+            )
         }
     }
 }
