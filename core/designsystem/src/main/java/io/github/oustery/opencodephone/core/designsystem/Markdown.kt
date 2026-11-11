@@ -49,6 +49,21 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+
+/**
+ * Shared style knobs of the chat renderer, so every caller stays in sync.
+ */
+object MarkdownDefaults {
+    /**
+     * Chat body: M3 `bodyLarge` with a tightened 22sp line height. Agent
+     * answers are long, and the stock 16/24 rhythm reads airy inside a
+     * bubble — 16/22 keeps the glyph size and accessibility of bodyLarge
+     * while fitting roughly a ninth more lines per screen.
+     */
+    val chatBody: TextStyle
+        @Composable get() = MaterialTheme.typography.bodyLarge.copy(lineHeight = 22.sp)
+}
 
 /**
  * Material 3 Expressive rendering of the [MarkdownParser] subset, tuned for
@@ -63,14 +78,14 @@ import androidx.compose.ui.unit.dp
 fun MarkdownText(
     markdown: String,
     modifier: Modifier = Modifier,
-    style: TextStyle = MaterialTheme.typography.bodyLarge,
+    style: TextStyle = MarkdownDefaults.chatBody,
     codeCopyLabel: String,
 ) {
     // The parser runs on every streamed token; remembering by input keeps the
     // cost linear in document size instead of in recompositions.
     val blocks = remember(markdown) { MarkdownParser.parseDocument(markdown) }
     SelectionContainer(modifier = modifier) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             MdBlocks(blocks, style, codeCopyLabel)
         }
     }
@@ -222,7 +237,7 @@ private fun MdCodeBlock(code: MdBlock.Code, copyLabel: String) {
                     style = CodeTypography.output,
                     modifier = Modifier
                         .horizontalScroll(rememberScrollState())
-                        .padding(start = 12.dp, end = 12.dp, bottom = 10.dp),
+                        .padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
                 )
             }
         }
