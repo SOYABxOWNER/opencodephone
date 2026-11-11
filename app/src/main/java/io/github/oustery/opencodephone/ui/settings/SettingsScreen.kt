@@ -114,6 +114,7 @@ fun SettingsScreen(graph: AppGraph) {
         LargeFlexibleTopAppBar(
             title = { Text(stringResource(R.string.tab_settings)) },
             subtitle = { Text(stringResource(R.string.settings_subtitle)) },
+            navigationIcon = { io.github.oustery.opencodephone.NavMenuButton() },
             scrollBehavior = scrollBehavior,
         )
         ScreenBody {

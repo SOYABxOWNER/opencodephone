@@ -28,6 +28,8 @@ Thumbs.db
 # Toolset builder scratch
 /.work/
 /.out/
+/tools/.work/
+/tools/.out/
 
 # Kotlin build session dir
 .kotlin/

@@ -2,6 +2,7 @@ package io.github.oustery.opencodephone.ui.files
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Image
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -33,6 +35,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -92,6 +95,16 @@ fun FilesScreen(graph: AppGraph) {
         ScreenHeader(
             title = stringResource(R.string.tab_files),
             actions = {
+                IconButton(onClick = { vm.toggleHidden() }) {
+                    Icon(
+                        painterResource(R.drawable.ic_eye),
+                        contentDescription = stringResource(
+                            if (state.hiddenVisible) R.string.files_hide_hidden else R.string.files_show_hidden,
+                        ),
+                        tint = if (state.hiddenVisible) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 IconButton(onClick = { vm.showNewFile(true) }) {
                     Icon(painterResource(R.drawable.ic_add), contentDescription = stringResource(R.string.files_new_file))
                 }
@@ -135,7 +148,7 @@ fun FilesScreen(graph: AppGraph) {
                 }
             }
 
-            if (state.workspaceEmpty && state.busy == null) {
+            if (state.workspaceLoaded && state.workspaceEmpty && state.busy == null) {
                 OcEmptyState(
                     title = stringResource(R.string.files_empty_title),
                     description = stringResource(R.string.files_empty_body),
@@ -144,10 +157,10 @@ fun FilesScreen(graph: AppGraph) {
                     actionText = stringResource(R.string.files_clone),
                     onAction = { vm.showClone(true) },
                 )
-            } else if (state.entries.isEmpty() && state.busy == null) {
-                // The first scan has not reported yet (workspaceEmpty is only
-                // decided after it completes): placeholder rows instead of a
-                // blank screen (M3E audit E-017).
+            } else if (!state.workspaceLoaded && state.busy == null) {
+                // The first root listing has not landed yet (workspaceLoaded
+                // is only set after it completes): placeholder rows instead of
+                // a blank screen (M3E audit E-017).
                 Column(
                     modifier = Modifier.fillMaxSize().padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -161,10 +174,12 @@ fun FilesScreen(graph: AppGraph) {
                 }
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    items(state.entries, key = { it.file.absolutePath }) { entry ->
+                    items(state.rows, key = { it.file.absolutePath }) { entry ->
                         FileRow(
                             entry,
                             expanded = entry.file.absolutePath in state.expanded,
+                            loading = entry.file.absolutePath in state.loadingDirs,
+                            error = state.dirErrors[entry.file.absolutePath],
                             onClick = { if (entry.isDir) vm.toggleDir(entry) else vm.openFile(entry) },
                             onLongClick = { actionsFor = entry },
                         )
@@ -328,9 +343,27 @@ private fun GitBar(branch: String, changes: Int, busy: Boolean, onOpenCommit: ()
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun FileRow(entry: FileEntry, expanded: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
+private fun FileRow(
+    entry: FileEntry,
+    expanded: Boolean,
+    loading: Boolean,
+    error: String?,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
     val description = stringResource(if (expanded) R.string.state_expanded else R.string.state_collapsed)
     val actionHint = stringResource(R.string.files_row_actions)
+    // The chevron answers the tap synchronously: expansion state flips in
+    // the view model before any disk work starts.
+    val chevronRotation by animateFloatAsState(
+        targetValue = if (expanded) 90f else 0f,
+        label = "folderChevron",
+    )
+    val tail = when {
+        entry.isDir && entry.childCount >= 0 -> stringResource(R.string.files_child_count, entry.childCount)
+        !entry.isDir -> FileTree.formatSize(entry.size)
+        else -> ""
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth().heightIn(min = 48.dp)
@@ -346,12 +379,20 @@ private fun FileRow(entry: FileEntry, expanded: Boolean, onClick: () -> Unit, on
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         if (entry.isDir) {
-            Icon(
-                painterResource(R.drawable.ic_chevron_right),
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            if (loading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.dp,
+                )
+            } else {
+                Icon(
+                    painterResource(R.drawable.ic_chevron_right),
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp).rotate(chevronRotation),
+                    tint = if (error != null) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             Icon(
                 painterResource(R.drawable.ic_tab_files),
                 contentDescription = null,
@@ -373,6 +414,13 @@ private fun FileRow(entry: FileEntry, expanded: Boolean, onClick: () -> Unit, on
             style = MaterialTheme.typography.bodyLarge,
             color = if (entry.isDir) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        if (tail.isNotEmpty()) {
+            Text(
+                text = tail,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
