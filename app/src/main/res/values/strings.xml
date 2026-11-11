@@ -332,4 +332,47 @@
     <string name="settings_pick_section">Select a section on the left.</string>
     <string name="nav_back">Back</string>
     <string name="nav_app_version">Version %1$s</string>
+
+    <!-- UI/UX audit: no silent failures, honest busy states, rotation-safe dialogs -->
+    <string name="chat_notice_agent_list">Agent list unavailable: %1$s</string>
+    <string name="chat_notice_todos">Task plan unavailable: %1$s</string>
+    <string name="chat_notice_questions">Pending questions unavailable: %1$s</string>
+    <string name="chat_notice_plan_items">%1$d plan item(s) could not be parsed</string>
+    <string name="chat_notice_dropped">%1$d message(s) could not be parsed and are hidden</string>
+    <string name="chat_notice_inline_failed">Attachments not inlined: %1$s</string>
+    <string name="chat_notice_question_reject_failed">Could not reject the question: %1$s</string>
+    <string name="chat_error_permission_parse">Permission request could not be parsed; abort the task if the agent stays blocked (%1$s)</string>
+    <string name="chat_error_question_parse">Agent question could not be parsed; abort the task if it stays blocked (%1$s)</string>
+    <string name="files_load_failed">Load failed</string>
+    <string name="files_draft_reopen_failed">Unsaved draft could not be reopened: %1$s</string>
+    <string name="files_op_failed">Operation failed</string>
+    <string name="files_refresh_failed">Refresh failed: %1$s</string>
+    <string name="files_busy_opening">Opening…</string>
+    <string name="files_busy_saving">Saving…</string>
+    <string name="files_saved">Saved %1$s</string>
+    <string name="files_busy_creating">Creating…</string>
+    <string name="files_busy_cloning">Cloning…</string>
+    <string name="files_clone_bad_name">Invalid repository name</string>
+    <string name="files_clone_exists">Directory already exists</string>
+    <string name="files_busy_committing">Committing…</string>
+    <string name="files_no_repo">Select a repository directory</string>
+    <string name="git_commit_no_files">Select at least one changed file</string>
+    <string name="files_busy_deleting">Deleting…</string>
+    <string name="files_busy_renaming">Renaming…</string>
+    <string name="files_busy_pushing">Pushing…</string>
+    <string name="git_no_push_remote">No push remote configured</string>
+    <string name="files_pushed">Pushed</string>
+    <string name="files_busy_pulling">Pulling…</string>
+    <string name="git_no_branch">No current branch</string>
+    <string name="git_no_remote">No remote configured</string>
+    <string name="files_pulled">Pulled from origin</string>
+    <string name="git_action_failed">%1$s: error (exit %2$d)</string>
+    <string name="git_action_status">Git status</string>
+    <string name="git_action_clone">Clone</string>
+    <string name="git_action_add">Git add</string>
+    <string name="git_action_commit">Commit</string>
+    <string name="git_action_push">Push</string>
+    <string name="git_action_pull">Pull</string>
+    <string name="terminal_restart_confirm">Restarting destroys the shell and any command it is running. Restart now?</string>
+    <string name="terminal_scroll_bottom">Jump to the latest output</string>
 </resources>

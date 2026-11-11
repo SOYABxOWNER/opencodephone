@@ -2,7 +2,7 @@ package io.github.oustery.opencodephone.ui.terminal
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import io.github.oustery.opencodephone.core.model.ConsoleOutput
+import io.github.oustery.opencodephone.core.model.TaggedOutput
 import io.github.oustery.opencodephone.AppGraph
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
@@ -13,7 +13,9 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 data class TerminalUiState(
-    val output: List<String> = emptyList(),
+    // Tagged lines carry stable ids: the ring buffer trims from the front, so
+    // positional keys would shift every visible row on wrap (UI audit A6).
+    val output: List<TaggedOutput.Line> = emptyList(),
     val draft: String = "",
     val alive: Boolean = false,
     /** Recently sent commands, newest first (chips above the composer). */
@@ -37,7 +39,7 @@ class TerminalViewModel(private val graph: AppGraph) : ViewModel() {
     private var shellJob: Job? = null
     @Volatile private var generation = 0
     private val processGuard = Any()
-    private val output = ConsoleOutput(MAX_LINES)
+    private val output = TaggedOutput(MAX_LINES)
 
     fun start() {
         if (shellJob?.isActive == true || process?.isAlive == true) return
@@ -110,7 +112,7 @@ class TerminalViewModel(private val graph: AppGraph) : ViewModel() {
     fun updateDraft(value: String) = _state.update { it.copy(draft = value) }
 
     /** Full raw transcript for the copy-all action. */
-    fun outputText(): String = _state.value.output.joinToString("\n")
+    fun outputText(): String = _state.value.output.joinToString("\n") { it.text }
 
     fun zoomIn() = _state.update { it.copy(fontScale = (it.fontScale + 0.1f).coerceAtMost(1.6f)) }
     fun zoomOut() = _state.update { it.copy(fontScale = (it.fontScale - 0.1f).coerceAtLeast(0.7f)) }

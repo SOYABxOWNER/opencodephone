@@ -26,7 +26,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.drop
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -82,15 +91,30 @@ fun MarkdownText(
     style: TextStyle = MarkdownDefaults.chatBody,
     codeCopyLabel: String,
 ) {
-    // The parser runs on every streamed token; remembering by input keeps the
-    // cost linear in document size instead of in recompositions.
-    val blocks = remember(markdown) { MarkdownParser.parseDocument(markdown) }
+    // The parser runs per document; a streamed answer changes `markdown` on
+    // every token, so a naive remember(markdown) re-parses the whole growing
+    // document per token (O(n²) over an answer). The initial value parses
+    // synchronously; token-level updates are debounced and superseded parses
+    // are cancelled, which keeps the render current at a bounded cost.
+    val current = rememberUpdatedState(markdown)
+    var blocks by remember { mutableStateOf(MarkdownParser.parseDocument(markdown)) }
+    LaunchedEffect(Unit) {
+        snapshotFlow { current.value }
+            .drop(1) // the composition-time value is already parsed
+            .collectLatest { text ->
+                delay(PARSE_DEBOUNCE_MS)
+                blocks = MarkdownParser.parseDocument(text)
+            }
+    }
     SelectionContainer(modifier = modifier) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             MdBlocks(blocks, style, codeCopyLabel)
         }
     }
 }
+
+/** Coalescing window for streamed markdown updates. */
+private const val PARSE_DEBOUNCE_MS = 150L
 
 @Composable
 private fun MdBlocks(

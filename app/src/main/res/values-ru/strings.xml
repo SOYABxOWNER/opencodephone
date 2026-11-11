@@ -332,4 +332,47 @@
     <string name="settings_pick_section">Выберите раздел слева.</string>
     <string name="nav_back">Назад</string>
     <string name="nav_app_version">Версия %1$s</string>
+
+    <!-- UI/UX audit: no silent failures, honest busy states, rotation-safe dialogs -->
+    <string name="chat_notice_agent_list">Список агентов недоступен: %1$s</string>
+    <string name="chat_notice_todos">План задачи недоступен: %1$s</string>
+    <string name="chat_notice_questions">Ожидающие вопросы недоступны: %1$s</string>
+    <string name="chat_notice_plan_items">Не удалось разобрать пунктов плана: %1$d</string>
+    <string name="chat_notice_dropped">Сообщений не разобрано и скрыто: %1$d</string>
+    <string name="chat_notice_inline_failed">Вложения не подключены: %1$s</string>
+    <string name="chat_notice_question_reject_failed">Не удалось отклонить вопрос: %1$s</string>
+    <string name="chat_error_permission_parse">Не удалось разобрать запрос разрешения; прервите задачу, если агент остаётся заблокированным (%1$s)</string>
+    <string name="chat_error_question_parse">Не удалось разобрать вопрос агента; прервите задачу, если она остаётся заблокированной (%1$s)</string>
+    <string name="files_load_failed">Не удалось загрузить</string>
+    <string name="files_draft_reopen_failed">Несохранённый черновик не удалось восстановить: %1$s</string>
+    <string name="files_op_failed">Операция не выполнена</string>
+    <string name="files_refresh_failed">Не удалось обновить: %1$s</string>
+    <string name="files_busy_opening">Открытие…</string>
+    <string name="files_busy_saving">Сохранение…</string>
+    <string name="files_saved">Сохранено: %1$s</string>
+    <string name="files_busy_creating">Создание…</string>
+    <string name="files_busy_cloning">Клонирование…</string>
+    <string name="files_clone_bad_name">Недопустимое имя репозитория</string>
+    <string name="files_clone_exists">Каталог уже существует</string>
+    <string name="files_busy_committing">Коммит…</string>
+    <string name="files_no_repo">Выберите каталог репозитория</string>
+    <string name="git_commit_no_files">Выберите хотя бы один изменённый файл</string>
+    <string name="files_busy_deleting">Удаление…</string>
+    <string name="files_busy_renaming">Переименование…</string>
+    <string name="files_busy_pushing">Отправка…</string>
+    <string name="git_no_push_remote">Не настроен remote для push</string>
+    <string name="files_pushed">Отправлено</string>
+    <string name="files_busy_pulling">Получение…</string>
+    <string name="git_no_branch">Нет текущей ветки</string>
+    <string name="git_no_remote">Не настроен remote</string>
+    <string name="files_pulled">Получено из origin</string>
+    <string name="git_action_failed">%1$s: ошибка (код %2$d)</string>
+    <string name="git_action_status">Git status</string>
+    <string name="git_action_clone">Клонирование</string>
+    <string name="git_action_add">Git add</string>
+    <string name="git_action_commit">Коммит</string>
+    <string name="git_action_push">Push</string>
+    <string name="git_action_pull">Pull</string>
+    <string name="terminal_restart_confirm">Перезапуск уничтожит оболочку и все выполняемые команды. Перезапустить?</string>
+    <string name="terminal_scroll_bottom">Перейти к последнему выводу</string>
 </resources>

@@ -101,6 +101,10 @@ data class ChatUiState(
     // a misleading "empty" label while the first fetch is still in flight.
     val sessionsLoading: Boolean = false,
     val providersLoading: Boolean = false,
+    // History is being fetched for the freshly selected session — shown as a
+    // skeleton instead of the "New conversation" empty state, which used to
+    // flash on every session switch and reconnect (UI audit A1).
+    val messagesLoading: Boolean = false,
     // Shared project context (functional audit F-001): workspace-relative
     // path of the repository selected in Files, shown above the composer.
     val projectContext: String? = null,
@@ -128,6 +132,16 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
 
     private val _state = MutableStateFlow(ChatUiState())
     val state: StateFlow<ChatUiState> = _state
+
+    /**
+     * Banner text for any failure. `e.message` is frequently null (NPE, IO
+     * subclasses); writing it into `error` verbatim silently cleared the
+     * banner instead of showing anything (exception audit).
+     */
+    private fun errorText(e: Exception): String = e.message ?: e.javaClass.simpleName
+
+    /** Detail argument for localized messages: message, then class name. */
+    private fun detail(e: Exception): String = e.message ?: e.javaClass.simpleName
 
     private var eventsJob: Job? = null
     private var messagesJob: Job? = null
@@ -225,6 +239,7 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                 error = null,
                 sessionsLoading = true,
                 providersLoading = true,
+                messagesLoading = true,
             )
         }
         try {
@@ -241,7 +256,12 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                 // Convenience affordance (F-006): must not break the
                 // connection — but the failure must not stay invisible.
                 _state.update {
-                    it.copy(notice = "Agent list unavailable: ${e.message ?: e.javaClass.simpleName}")
+                    it.copy(
+                        notice = graph.appContext.getString(
+                            io.github.oustery.opencodephone.R.string.chat_notice_agent_list,
+                            detail(e),
+                        ),
+                    )
                 }
             }
             loadSessions()
@@ -255,9 +275,10 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
             _state.update {
                 it.copy(
                     connection = ChatConnection.ERROR,
-                    error = e.message,
+                    error = errorText(e),
                     sessionsLoading = false,
                     providersLoading = false,
+                    messagesLoading = false,
                 )
             }
         }
@@ -323,7 +344,12 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
             throw e
         } catch (e: Exception) {
             _state.update {
-                it.copy(notice = "Task plan unavailable: ${e.message ?: e.javaClass.simpleName}")
+                it.copy(
+                    notice = graph.appContext.getString(
+                        io.github.oustery.opencodephone.R.string.chat_notice_todos,
+                        detail(e),
+                    ),
+                )
             }
         }
     }
@@ -338,7 +364,12 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
             throw e
         } catch (e: Exception) {
             _state.update {
-                it.copy(notice = "Pending questions unavailable: ${e.message ?: e.javaClass.simpleName}")
+                it.copy(
+                    notice = graph.appContext.getString(
+                        io.github.oustery.opencodephone.R.string.chat_notice_questions,
+                        detail(e),
+                    ),
+                )
             }
             emptyList()
         }
@@ -384,7 +415,7 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                 } catch (e: CancellationException) { throw e }
                 catch (e: Exception) {
                     if (ticket != endpointEpoch) return@launch
-                    _state.update { it.copy(connection = ChatConnection.ERROR, error = e.message, busy = false) }
+                    _state.update { it.copy(connection = ChatConnection.ERROR, error = errorText(e), busy = false) }
                     if (e is OpenCodeApiException && e.code in listOf(401, 403)) return@launch
                 }
                 attempts++
@@ -425,8 +456,10 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                     // would never appear while the agent waits for an answer.
                     _state.update {
                         it.copy(
-                            error = "Permission request could not be parsed; abort the task if the agent stays blocked " +
-                                "(${event.properties.toString().take(160)})",
+                            error = graph.appContext.getString(
+                                io.github.oustery.opencodephone.R.string.chat_error_permission_parse,
+                                event.properties.toString().take(160),
+                            ),
                         )
                     }
                 }
@@ -443,7 +476,12 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                     }
                     if (todos.size < elements.size) {
                         _state.update {
-                            it.copy(notice = "${elements.size - todos.size} plan item(s) could not be parsed")
+                            it.copy(
+                                notice = graph.appContext.getString(
+                                    io.github.oustery.opencodephone.R.string.chat_notice_plan_items,
+                                    elements.size - todos.size,
+                                ),
+                            )
                         }
                     }
                     _state.update { it.copy(todos = todos) }
@@ -469,8 +507,10 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                     // user must know to abort the task.
                     _state.update {
                         it.copy(
-                            error = "Agent question could not be parsed; abort the task if it stays blocked " +
-                                "(${event.properties.toString().take(160)})",
+                            error = graph.appContext.getString(
+                                io.github.oustery.opencodephone.R.string.chat_error_question_parse,
+                                event.properties.toString().take(160),
+                            ),
                         )
                     }
                 }
@@ -503,7 +543,7 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            _state.update { it.copy(error = e.message) }
+            _state.update { it.copy(error = errorText(e)) }
         }
     }
 
@@ -531,8 +571,12 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                     it.copy(
                         messages = visible,
                         earlierCursor = page.nextCursor,
+                        messagesLoading = false,
                         notice = if (page.dropped > 0) {
-                            "${page.dropped} message(s) could not be parsed and are hidden"
+                            graph.appContext.getString(
+                                io.github.oustery.opencodephone.R.string.chat_notice_dropped,
+                                page.dropped,
+                            )
                         } else it.notice,
                     )
                 } else {
@@ -542,7 +586,7 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            _state.update { it.copy(error = e.message) }
+            _state.update { it.copy(error = errorText(e), messagesLoading = false) }
             if (required) throw e
         }
     }
@@ -573,7 +617,10 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                             earlierCursor = page.nextCursor,
                             loadingEarlier = false,
                             notice = if (page.dropped > 0) {
-                                "${page.dropped} message(s) could not be parsed and are hidden"
+                                graph.appContext.getString(
+                                    io.github.oustery.opencodephone.R.string.chat_notice_dropped,
+                                    page.dropped,
+                                )
                             } else it.notice,
                         )
                     } else {
@@ -584,7 +631,7 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                 throw e
             } catch (e: Exception) {
                 if (ticket != endpointEpoch) return@launch
-                _state.update { it.copy(loadingEarlier = false, error = e.message) }
+                _state.update { it.copy(loadingEarlier = false, error = errorText(e)) }
             }
         }
     }
@@ -780,7 +827,7 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                 throw e
             } catch (e: Exception) {
                 if (ticket != endpointEpoch) return@launch
-                _state.update { it.copy(error = e.message) }
+                _state.update { it.copy(error = errorText(e)) }
             }
         }
     }
@@ -795,6 +842,8 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                 earlierCursor = null,
                 loadingEarlier = false,
                 todos = emptyList(),
+                // The skeleton replaces the "New conversation" flash (A1).
+                messagesLoading = true,
                 revertMarker = it.sessions.firstOrNull { s -> s.id == sessionId }?.revert,
             )
         }
@@ -804,7 +853,7 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
             loadTodosQuiet(sessionId)
             try { reconcileStatus() }
             catch (e: CancellationException) { throw e }
-            catch (e: Exception) { _state.update { it.copy(error = e.message) } }
+            catch (e: Exception) { _state.update { it.copy(error = errorText(e)) } }
         }
     }
 
@@ -828,7 +877,7 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                 throw e
             } catch (e: Exception) {
                 if (ticket != endpointEpoch) return@launch
-                _state.update { it.copy(error = e.message) }
+                _state.update { it.copy(error = errorText(e)) }
             }
         }
     }
@@ -850,7 +899,7 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                 throw e
             } catch (e: Exception) {
                 if (ticket != endpointEpoch) return@launch
-                _state.update { it.copy(error = e.message) }
+                _state.update { it.copy(error = errorText(e)) }
             }
         }
     }
@@ -876,7 +925,7 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                 throw e
             } catch (e: Exception) {
                 if (ticket != endpointEpoch) return@launch
-                _state.update { it.copy(diffLoading = false, error = e.message) }
+                _state.update { it.copy(diffLoading = false, error = errorText(e)) }
             }
         }
     }
@@ -933,7 +982,12 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                         }
                         if (failed.isNotEmpty()) {
                             _state.update {
-                                it.copy(notice = "Attachments not inlined: ${failed.joinToString(", ").take(200)}")
+                                it.copy(
+                                    notice = graph.appContext.getString(
+                                        io.github.oustery.opencodephone.R.string.chat_notice_inline_failed,
+                                        failed.joinToString(", ").take(200),
+                                    ),
+                                )
                             }
                         }
                         blocks.joinToString("\n\n").ifBlank { null }
@@ -963,7 +1017,7 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                 // Restore the composer so nothing the user typed is lost.
                 _state.update {
                     it.copy(
-                        error = e.message,
+                        error = errorText(e),
                         busy = false,
                         draft = if (it.draft.isBlank()) sentDraft else it.draft,
                         attachments = it.attachments + sentAttachments,
@@ -985,7 +1039,7 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                 throw e
             } catch (e: Exception) {
                 if (ticket != endpointEpoch) return@launch
-                _state.update { it.copy(error = e.message) }
+                _state.update { it.copy(error = errorText(e)) }
             }
         }
     }
@@ -1009,7 +1063,7 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                 throw e
             } catch (e: Exception) {
                 if (ticket != endpointEpoch) return@launch
-                _state.update { it.copy(error = e.message) }
+                _state.update { it.copy(error = errorText(e)) }
             }
         }
     }
@@ -1029,7 +1083,7 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                 throw e
             } catch (e: Exception) {
                 if (ticket != endpointEpoch) return@launch
-                _state.update { it.copy(error = e.message) }
+                _state.update { it.copy(error = errorText(e)) }
             }
         }
     }
@@ -1038,6 +1092,10 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
         val request = _state.value.permission ?: return
         val client = activeClient
         val ticket = endpointEpoch
+        // Optimistic close like [answerQuestion]: a double-tap must not send
+        // two replies for one request, and the gate should not sit there
+        // frozen while the round-trip is in flight (UI audit C7).
+        _state.update { it.copy(permission = null) }
         viewModelScope.launch {
             try {
                 client.respondPermission(request.sessionId, request.permissionId, response)
@@ -1046,7 +1104,8 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                 throw e
             } catch (e: Exception) {
                 if (ticket != endpointEpoch) return@launch
-                _state.update { it.copy(error = e.message) }
+                // Reopen the gate so the answer can be retried.
+                _state.update { it.copy(error = errorText(e), permission = request) }
             }
         }
     }
@@ -1070,7 +1129,7 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                 throw e
             } catch (e: Exception) {
                 if (ticket != endpointEpoch) return@launch
-                _state.update { it.copy(error = e.message, question = request) }
+                _state.update { it.copy(error = errorText(e), question = request) }
             }
         }
     }
@@ -1089,7 +1148,12 @@ class ChatViewModel(private val graph: AppGraph) : ViewModel() {
                 // The dialog is already closed and the next reconcile reloads
                 // still-pending requests, but the failure stays visible.
                 _state.update {
-                    it.copy(notice = "Question rejection failed: ${e.message ?: e.javaClass.simpleName}")
+                    it.copy(
+                        notice = graph.appContext.getString(
+                            io.github.oustery.opencodephone.R.string.chat_notice_question_reject_failed,
+                            detail(e),
+                        ),
+                    )
                 }
             }
         }

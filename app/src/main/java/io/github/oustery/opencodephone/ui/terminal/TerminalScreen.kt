@@ -20,7 +20,9 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -32,7 +34,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -47,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.launch
 import io.github.oustery.opencodephone.AppGraph
 import io.github.oustery.opencodephone.R
 import io.github.oustery.opencodephone.ScreenBody
@@ -64,6 +73,10 @@ fun TerminalScreen(graph: AppGraph) {
     val clipboard = LocalClipboardManager.current
 
     LaunchedEffect(Unit) { vm.start() }
+
+    // Restart destroys the shell and any command it is running — the only
+    // destructive action on this screen, so it asks first (UI audit C6).
+    var confirmRestart by rememberSaveable { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         ScreenHeader(
@@ -83,7 +96,7 @@ fun TerminalScreen(graph: AppGraph) {
                         contentDescription = stringResource(R.string.terminal_clear),
                     )
                 }
-                IconButton(onClick = { vm.restart() }) {
+                IconButton(onClick = { confirmRestart = true }) {
                     Icon(
                         painterResource(R.drawable.ic_refresh),
                         contentDescription = stringResource(R.string.terminal_restart),
@@ -92,8 +105,28 @@ fun TerminalScreen(graph: AppGraph) {
             },
         )
 
+        if (confirmRestart) {
+            AlertDialog(
+                onDismissRequest = { confirmRestart = false },
+                title = { Text(stringResource(R.string.terminal_restart)) },
+                text = { Text(stringResource(R.string.terminal_restart_confirm)) },
+                confirmButton = {
+                    TextButton(onClick = {
+                        confirmRestart = false
+                        vm.restart()
+                    }) { Text(stringResource(R.string.terminal_restart)) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { confirmRestart = false }) {
+                        Text(stringResource(R.string.action_cancel))
+                    }
+                },
+            )
+        }
+
         ScreenBody {
             val listState = rememberLazyListState()
+            val listScope = rememberCoroutineScope()
             // Console chrome: a labelled strip (shell liveness dot, font zoom)
             // sits on top of the rounded output pane, so the terminal reads as
             // one instrument instead of a raw text list.
@@ -137,37 +170,65 @@ fun TerminalScreen(graph: AppGraph) {
                         }
                     }
                 }
-                Surface(
-                    shape = RoundedCornerShape(bottomStart = 14.dp, bottomEnd = 14.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerLowest,
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                ) {
-                    LazyColumn(
-                        state = listState,
+                Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                    Surface(
+                        shape = RoundedCornerShape(bottomStart = 14.dp, bottomEnd = 14.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerLowest,
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(12.dp),
                     ) {
-                        if (state.output.isEmpty()) {
-                            item(key = "terminal-empty") {
-                                OcEmptyState(
-                                    title = stringResource(R.string.terminal_empty_title),
-                                    description = stringResource(R.string.terminal_empty_hint),
-                                    icon = painterResource(R.drawable.ic_tab_terminal),
-                                )
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(12.dp),
+                        ) {
+                            if (state.output.isEmpty()) {
+                                item(key = "terminal-empty") {
+                                    OcEmptyState(
+                                        title = stringResource(R.string.terminal_empty_title),
+                                        description = stringResource(R.string.terminal_empty_hint),
+                                        icon = painterResource(R.drawable.ic_tab_terminal),
+                                    )
+                                }
+                            }
+                            // Stable ids keep each visible row's identity across
+                            // ring-buffer trims (UI audit A6).
+                            items(state.output, key = { it.id }) { line ->
+                                // Copyable output without a toolbar (M3E audit E-011).
+                                SelectionContainer {
+                                    Text(
+                                        text = line.text,
+                                        style = CodeTypography.output.copy(
+                                            fontSize = CodeTypography.output.fontSize * state.fontScale,
+                                            lineHeight = CodeTypography.output.lineHeight * state.fontScale,
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
                             }
                         }
-                        items(state.output) { line ->
-                            // Copyable output without a toolbar (M3E audit E-011).
-                            SelectionContainer {
-                                Text(
-                                    text = line,
-                                    style = CodeTypography.output.copy(
-                                        fontSize = CodeTypography.output.fontSize * state.fontScale,
-                                        lineHeight = CodeTypography.output.lineHeight * state.fontScale,
-                                    ),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
+                    }
+                    // “Back to the stream” affordance: when the reader scrolled
+                    // up during a long output, one tap returns to the tail.
+                    val atBottom by remember {
+                        derivedStateOf {
+                            val info = listState.layoutInfo
+                            val last = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+                            last >= info.totalItemsCount - 2
+                        }
+                    }
+                    if (!atBottom && state.output.isNotEmpty()) {
+                        FilledTonalIconButton(
+                            onClick = {
+                                listScope.launch { listState.scrollToItem(state.output.size - 1) }
+                            },
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(12.dp),
+                        ) {
+                            Icon(
+                                painterResource(R.drawable.ic_chevron_down),
+                                contentDescription = stringResource(R.string.terminal_scroll_bottom),
+                            )
                         }
                     }
                 }

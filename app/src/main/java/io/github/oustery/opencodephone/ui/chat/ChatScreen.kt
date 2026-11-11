@@ -46,6 +46,9 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.AlertDialog
@@ -71,6 +74,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -213,7 +217,10 @@ private fun ChatTimeline(vm: ChatViewModel, state: ChatUiState) {
         val clipboard = LocalClipboardManager.current
         // Revert confirmation (functional audit F-014): long-press on a user
         // message offers "revert the session to before this message".
-        var revertFor by remember { mutableStateOf<UiMessage?>(null) }
+        // Message ids survive rotation via rememberSaveable; the dialog target
+        // is derived from the loaded timeline (UI audit A3).
+        var revertForId by rememberSaveable { mutableStateOf<String?>(null) }
+        val revertFor = revertForId?.let { id -> state.messages.firstOrNull { it.id == id } }
 
         LazyColumn(
             state = listState,
@@ -222,7 +229,14 @@ private fun ChatTimeline(vm: ChatViewModel, state: ChatUiState) {
             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            if (state.messages.isEmpty() && !state.busy) {
+            // A freshly selected session fetches its history first: the
+            // skeleton tells "loading" instead of flashing the "New
+            // conversation" empty state (UI audit A1).
+            if (state.messages.isEmpty() && state.messagesLoading && !state.busy) {
+                item(key = "chat-history-loading") {
+                    OcSkeletonRows(rows = 4)
+                }
+            } else if (state.messages.isEmpty() && !state.busy) {
                 item {
                     Column(
                         modifier = Modifier.fillMaxWidth(),
@@ -254,7 +268,7 @@ private fun ChatTimeline(vm: ChatViewModel, state: ChatUiState) {
                     compact = index > 0 && state.messages[index - 1].role == message.role,
                     onCopy = { text -> clipboard.setText(AnnotatedString(text)) },
                     onRevert = if (message.role == "user") {
-                        { revertFor = message }
+                        { revertForId = message.id }
                     } else null,
                 )
             }
@@ -474,17 +488,17 @@ private fun ChatTimeline(vm: ChatViewModel, state: ChatUiState) {
 
         revertFor?.let { target ->
             AlertDialog(
-                onDismissRequest = { revertFor = null },
+                onDismissRequest = { revertForId = null },
                 title = { Text(stringResource(R.string.chat_revert_title)) },
                 text = { Text(stringResource(R.string.chat_revert_body)) },
                 confirmButton = {
                     TextButton(onClick = {
-                        revertFor = null
+                        revertForId = null
                         vm.revertTo(target.id)
                     }) { Text(stringResource(R.string.chat_revert_action)) }
                 },
                 dismissButton = {
-                    TextButton(onClick = { revertFor = null }) {
+                    TextButton(onClick = { revertForId = null }) {
                         Text(stringResource(R.string.action_cancel))
                     }
                 },
@@ -561,6 +575,10 @@ private fun ChatInput(vm: ChatViewModel, state: ChatUiState) {
                         modifier = Modifier.weight(1f),
                         placeholder = { Text(stringResource(R.string.chat_input_hint)) },
                         maxLines = 4,
+                        // The keyboard's send action sends, matching the
+                        // terminal composer (UI audit A7).
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                        keyboardActions = KeyboardActions(onSend = { if (!state.busy) vm.send() }),
                         shape = MaterialTheme.shapes.extraLarge,
                         // The dock carries the chrome; the field itself stays
                         // quiet (border appears only on focus).
@@ -598,6 +616,9 @@ private fun ChatInput(vm: ChatViewModel, state: ChatUiState) {
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             if (state.busy) vm.abort() else vm.send()
                         },
+                        // Idle taps on an empty composer did nothing silently;
+                        // disable instead so the affordance is honest (A7).
+                        enabled = state.busy || state.draft.isNotBlank() || state.attachments.isNotEmpty(),
                         colors = IconButtonDefaults.filledIconButtonColors(
                             containerColor = sendContainer,
                             contentColor = sendContent,
@@ -930,8 +951,12 @@ private fun SessionsSheet(vm: ChatViewModel, state: ChatUiState) {
     // run inside the row click lambda (M3E audit E-010).
     val haptics = LocalHapticFeedback.current
     // Session management actions (functional audit F-004).
-    var pendingDelete by remember { mutableStateOf<Session?>(null) }
-    var renaming by remember { mutableStateOf<Session?>(null) }
+    // Dialog targets survive rotation via the session id; the Session object
+    // itself is derived from the loaded list (UI audit A3).
+    var pendingDeleteId by rememberSaveable { mutableStateOf<String?>(null) }
+    var renamingId by rememberSaveable { mutableStateOf<String?>(null) }
+    val pendingDelete = pendingDeleteId?.let { id -> state.sessions.firstOrNull { it.id == id } }
+    val renaming = renamingId?.let { id -> state.sessions.firstOrNull { it.id == id } }
     Column(modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp).padding(horizontal = 20.dp, vertical = 12.dp)) {
         Text(stringResource(R.string.chat_sessions), style = MaterialTheme.typography.titleLarge)
         Spacer(Modifier.size(8.dp))
@@ -988,7 +1013,7 @@ private fun SessionsSheet(vm: ChatViewModel, state: ChatUiState) {
                     )
                     // size() overrides never shrink the icon below what the row
                     // needs, they only shrink the touch target (UI audit A1).
-                    IconButton(onClick = { renaming = session }) {
+                    IconButton(onClick = { renamingId = session.id }) {
                         Icon(
                             painterResource(R.drawable.ic_edit),
                             contentDescription = stringResource(R.string.chat_session_rename),
@@ -996,7 +1021,7 @@ private fun SessionsSheet(vm: ChatViewModel, state: ChatUiState) {
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    IconButton(onClick = { pendingDelete = session }) {
+                    IconButton(onClick = { pendingDeleteId = session.id }) {
                         Icon(
                             painterResource(R.drawable.ic_delete),
                             contentDescription = stringResource(R.string.action_delete),
@@ -1030,7 +1055,7 @@ private fun SessionsSheet(vm: ChatViewModel, state: ChatUiState) {
     }
     pendingDelete?.let { session ->
         AlertDialog(
-            onDismissRequest = { pendingDelete = null },
+            onDismissRequest = { pendingDeleteId = null },
             title = { Text(stringResource(R.string.chat_session_delete_title)) },
             text = {
                 Text(
@@ -1043,11 +1068,11 @@ private fun SessionsSheet(vm: ChatViewModel, state: ChatUiState) {
             confirmButton = {
                 TextButton(onClick = {
                     vm.deleteSession(session.id)
-                    pendingDelete = null
+                    pendingDeleteId = null
                 }) { Text(stringResource(R.string.action_delete)) }
             },
             dismissButton = {
-                TextButton(onClick = { pendingDelete = null }) { Text(stringResource(R.string.action_cancel)) }
+                TextButton(onClick = { pendingDeleteId = null }) { Text(stringResource(R.string.action_cancel)) }
             },
         )
     }
@@ -1056,9 +1081,9 @@ private fun SessionsSheet(vm: ChatViewModel, state: ChatUiState) {
             initial = session.title,
             onSave = {
                 vm.renameSession(session.id, it)
-                renaming = null
+                renamingId = null
             },
-            onDismiss = { renaming = null },
+            onDismiss = { renamingId = null },
         )
     }
 }
@@ -1363,7 +1388,7 @@ private fun ModelsSheet(vm: ChatViewModel, state: ChatUiState) {
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
-        LazyColumn(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+        LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f, fill = false).padding(bottom = 24.dp)) {
             state.providers.forEach { provider ->
                 item(key = "provider:${provider.id}") {
                     val connected = provider.id in state.connectedProviders

@@ -36,7 +36,12 @@ import java.util.concurrent.atomic.AtomicLong
     val gitProject: String? = null, val editing: EditingFile? = null,
     val showCloneDialog: Boolean = false, val showNewFileDialog: Boolean = false,
     val showCommitDialog: Boolean = false,
+    // Draft URL survives accidental dismissal and rotation (UI audit A3).
+    val cloneUrl: String = "",
     val busy: String? = null, val message: String? = null,
+    // Successes and failures shared one neutral surface, so a failed push
+    // looked exactly like a completed save (UI audit A4).
+    val messageIsError: Boolean = false,
 )
  data class EditingFile(val snapshot: WorkspaceFiles.Snapshot, val content: String) {
     val file: File get() = snapshot.file
@@ -126,7 +131,7 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
                     if (path in s.loadingDirs) {
                         s.copy(
                             loadingDirs = s.loadingDirs - path,
-                            dirErrors = s.dirErrors + (path to (e.message ?: "Load failed")),
+                            dirErrors = s.dirErrors + (path to (e.message ?: graph.appContext.getString(R.string.files_load_failed))),
                         )
                     } else s
                 }
@@ -175,7 +180,13 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
                 drafts.clearEditor()
                 // The unsaved buffer is lost here — the user must know.
                 _state.update {
-                    it.copy(message = "Unsaved draft could not be reopened: ${e.message ?: e.javaClass.simpleName}")
+                    it.copy(
+                        message = graph.appContext.getString(
+                            R.string.files_draft_reopen_failed,
+                            e.message ?: e.javaClass.simpleName,
+                        ),
+                        messageIsError = true,
+                    )
                 }
             }
         }
@@ -206,7 +217,14 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
             if (label != null) _state.update { it.copy(busy = label) }
             try { block() }
             catch (e: CancellationException) { throw e }
-            catch (e: Exception) { _state.update { it.copy(message = e.message ?: "Operation failed") } }
+            catch (e: Exception) {
+                _state.update {
+                    it.copy(
+                        message = e.message ?: graph.appContext.getString(R.string.files_op_failed),
+                        messageIsError = true,
+                    )
+                }
+            }
             finally { if (label != null) _state.update { it.copy(busy = null) } }
         }
     }
@@ -246,7 +264,16 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
                     refreshGit()
                 }
             } catch (e: CancellationException) { throw e }
-            catch (e: Exception) { _state.update { it.copy(message = "Refresh failed: ${e.message ?: e.javaClass.simpleName}") } }
+            catch (e: Exception) {
+                _state.update {
+                    it.copy(
+                        message = graph.appContext.getString(
+                            R.string.files_refresh_failed, e.message ?: e.javaClass.simpleName,
+                        ),
+                        messageIsError = true,
+                    )
+                }
+            }
         }
     }
 
@@ -276,7 +303,7 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
     fun openFile(entry: FileEntry) {
         val ticket = editEpoch.incrementAndGet()
         editorDraftJob?.cancel()
-        task {
+        task(graph.appContext.getString(R.string.files_busy_opening)) {
             val snapshot = files.open(entry.file)
             if (ticket == editEpoch.get()) _state.update { it.copy(editing = EditingFile(snapshot, snapshot.content)) }
         }
@@ -288,10 +315,20 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
     fun saveEditing() {
         val editing = _state.value.editing ?: return
         editorDraftJob?.cancel()
-        task {
+        task(graph.appContext.getString(R.string.files_busy_saving)) {
             files.save(editing.snapshot, editing.content)
             if (editing.file.absolutePath == editorDraftPath) drafts.clearEditor()
-            _state.update { if (it.editing === editing) it.copy(editing = null, message = "Saved ${editing.file.name}") else it }
+            _state.update {
+                if (it.editing === editing) {
+                    it.copy(
+                        editing = null,
+                        message = graph.appContext.getString(R.string.files_saved, editing.file.name),
+                        messageIsError = false,
+                    )
+                } else {
+                    it
+                }
+            }
             gitLock.withLock { refreshGit() }
         }
     }
@@ -304,9 +341,13 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
         _state.update { it.copy(editing = null) }
     }
     fun showClone(show: Boolean) = _state.update { it.copy(showCloneDialog = show) }
+    fun setCloneUrl(value: String) = _state.update { it.copy(cloneUrl = value) }
     fun showNewFile(show: Boolean) = _state.update { it.copy(showNewFileDialog = show) }
     fun showCommit(show: Boolean) = _state.update { it.copy(showCommitDialog = show) }
-    fun createFile(name: String) { _state.update { it.copy(showNewFileDialog = false) }; task { files.create(name); refresh() } }
+    fun createFile(name: String) {
+        _state.update { it.copy(showNewFileDialog = false) }
+        task(graph.appContext.getString(R.string.files_busy_creating)) { files.create(name); refresh() }
+    }
 
     private fun cwd(repo: File): String {
         val relative = workspace.toPath().toAbsolutePath().normalize().relativize(files.checked(repo).toPath())
@@ -323,11 +364,16 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
      * ("Clone failed (exit 128)") tells the user nothing — the reason must
      * reach the message bar (exception audit).
      */
-    private fun gitFailure(action: String, result: ExecResult): IllegalStateException {
+    private fun gitFailure(actionRes: Int, result: ExecResult): IllegalStateException {
+        // The last non-blank line of the merged output is git's own
+        // `fatal:`/`error:` explanation; a bare exit code tells the user
+        // nothing (exception audit).
         val detail = result.output.trim().lineSequence()
             .lastOrNull { it.isNotBlank() }?.take(300).orEmpty()
+        val context = graph.appContext
         return IllegalStateException(
-            "$action failed (exit ${result.exitCode})" + if (detail.isEmpty()) "" else ": $detail",
+            context.getString(R.string.git_action_failed, context.getString(actionRes), result.exitCode) +
+                if (detail.isEmpty()) "" else ": $detail",
         )
     }
     private suspend fun migrate(repo: File) = GitAuth.migrateRemotes { exec(repo, it) }
@@ -336,7 +382,7 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
         // -z keeps paths unquoted and NUL-separated, so spaces and exotic
         // characters survive the round-trip (F-008).
         val result = exec(repo, listOf("git", "status", "--porcelain", "-z", "-b"))
-        if (result.exitCode != 0) throw gitFailure("Git status", result)
+        if (result.exitCode != 0) throw gitFailure(R.string.git_action_status, result)
         val entries = result.output.split('\u0000').filter { it.isNotBlank() }
         val branch = entries.firstOrNull()?.takeIf { it.startsWith("## ") }?.removePrefix("## ")
         val changes = entries
@@ -358,15 +404,17 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
 
     fun cloneRepository(url: String) {
         _state.update { it.copy(showCloneDialog = false) }
-        task("Cloning…") {
+        task(graph.appContext.getString(R.string.files_busy_cloning)) {
             gitLock.withLock {
                 val clean = GitAuth.cleanUrl(url)
                 val name = java.net.URI(clean).path.removeSuffix("/").substringAfterLast('/').removeSuffix(".git")
-                require(name.matches(Regex("[A-Za-z0-9._-]+")) && name !in listOf(".", "..", ".git")) { "Invalid repository name" }
+                require(name.matches(Regex("[A-Za-z0-9._-]+")) && name !in listOf(".", "..", ".git")) {
+                    graph.appContext.getString(R.string.files_clone_bad_name)
+                }
                 val target = files.checked(File(workspace, name))
-                check(!target.exists()) { "Directory already exists" }
+                check(!target.exists()) { graph.appContext.getString(R.string.files_clone_exists) }
                 val result = exec(workspace, GitAuth.command("clone", "--", clean, name), GitAuth.environment(clean, graph.settings.gitConfig().githubToken))
-                if (result.exitCode != 0) throw gitFailure("Clone", result)
+                if (result.exitCode != 0) throw gitFailure(R.string.git_action_clone, result)
                 project = target
                 publishProject(target)
                 refreshGit()
@@ -377,18 +425,18 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
     fun commit(message: String, selectedPaths: Set<String> = emptySet()) {
         if (message.isBlank()) return
         _state.update { it.copy(showCommitDialog = false) }
-        task("Committing…") { gitLock.withLock {
-            val repo = checkNotNull(project) { "Select a repository directory" }
+        task(graph.appContext.getString(R.string.files_busy_committing)) { gitLock.withLock {
+            val repo = checkNotNull(project) { graph.appContext.getString(R.string.files_no_repo) }
             migrate(repo)
             // Stage only what the user picked instead of a blind `git add -A`
             // (functional audit F-008).
-            require(selectedPaths.isNotEmpty()) { "Select at least one changed file" }
+            require(selectedPaths.isNotEmpty()) { graph.appContext.getString(R.string.git_commit_no_files) }
             val added = exec(repo, listOf("git", "add", "--") + selectedPaths.toList())
-            if (added.exitCode != 0) throw gitFailure("Git add", added)
+            if (added.exitCode != 0) throw gitFailure(R.string.git_action_add, added)
             val identity = graph.settings.gitConfig()
             val args = listOf("-c", "user.name=${identity.userName}", "-c", "user.email=${identity.userEmail}", "commit", "-m", message)
             val committed = exec(repo, GitAuth.command(*args.toTypedArray()))
-            if (committed.exitCode != 0) throw gitFailure("Commit", committed)
+            if (committed.exitCode != 0) throw gitFailure(R.string.git_action_commit, committed)
             refreshGit()
         } }
     }
@@ -396,7 +444,7 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
     /** Delete a workspace file or directory tree (F-007). */
     fun deleteEntry(entry: FileEntry) {
         val absolute = entry.file.absolutePath
-        task {
+        task(graph.appContext.getString(R.string.files_busy_deleting)) {
             files.delete(entry.file)
             // Editor buffers and drafts pointing into the deleted subtree
             // must not survive it.
@@ -426,7 +474,7 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
 
     /** Rename a workspace file or directory within its parent (F-007). */
     fun renameEntry(entry: FileEntry, newName: String) {
-        task {
+        task(graph.appContext.getString(R.string.files_busy_renaming)) {
             val dest = files.rename(entry.file, newName)
             val oldPath = entry.file.absolutePath
             // The old editor snapshot (hash) is tied to the old path.
@@ -452,15 +500,20 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
         }
     }
     fun push() {
-        task("Pushing…") { gitLock.withLock {
-            val repo = checkNotNull(project) { "Select a repository directory" }
+        task(graph.appContext.getString(R.string.files_busy_pushing)) { gitLock.withLock {
+            val repo = checkNotNull(project) { graph.appContext.getString(R.string.files_no_repo) }
             migrate(repo)
             val remote = exec(repo, listOf("git", "remote", "get-url", "--push", "origin"))
-            check(remote.exitCode == 0) { "No push remote" }
+            check(remote.exitCode == 0) { graph.appContext.getString(R.string.git_no_push_remote) }
             val clean = GitAuth.cleanUrl(remote.output.trim())
             val result = exec(repo, GitAuth.command("push", clean, "HEAD"), GitAuth.environment(clean, graph.settings.gitConfig().githubToken))
-            if (result.exitCode != 0) throw gitFailure("Push", result)
-            _state.update { it.copy(message = "Pushed") }
+            if (result.exitCode != 0) throw gitFailure(R.string.git_action_push, result)
+            _state.update {
+                it.copy(
+                    message = graph.appContext.getString(R.string.files_pushed),
+                    messageIsError = false,
+                )
+            }
         } }
     }
 
@@ -471,22 +524,27 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
      * with incoming commits.
      */
     fun pull() {
-        task("Pulling…") {
+        task(graph.appContext.getString(R.string.files_busy_pulling)) {
             gitLock.withLock {
-                val repo = checkNotNull(project) { "Select a repository directory" }
+                val repo = checkNotNull(project) { graph.appContext.getString(R.string.files_no_repo) }
                 migrate(repo)
                 val branch = exec(repo, listOf("git", "rev-parse", "--abbrev-ref", "HEAD")).output.trim()
-                require(branch.isNotEmpty() && branch != "HEAD") { "No current branch" }
+                require(branch.isNotEmpty() && branch != "HEAD") { graph.appContext.getString(R.string.git_no_branch) }
                 val remote = exec(repo, listOf("git", "remote", "get-url", "origin"))
-                check(remote.exitCode == 0) { "No remote" }
+                check(remote.exitCode == 0) { graph.appContext.getString(R.string.git_no_remote) }
                 val clean = GitAuth.cleanUrl(remote.output.trim())
                 val result = exec(
                     repo,
                     GitAuth.command("pull", "--ff-only", clean, branch),
                     GitAuth.environment(clean, graph.settings.gitConfig().githubToken),
                 )
-                if (result.exitCode != 0) throw gitFailure("Pull", result)
-                _state.update { it.copy(message = "Pulled from origin") }
+                if (result.exitCode != 0) throw gitFailure(R.string.git_action_pull, result)
+                _state.update {
+                    it.copy(
+                        message = graph.appContext.getString(R.string.files_pulled),
+                        messageIsError = false,
+                    )
+                }
             }
             refresh()
         }
