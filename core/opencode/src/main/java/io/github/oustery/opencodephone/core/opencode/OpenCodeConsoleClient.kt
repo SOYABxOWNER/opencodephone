@@ -4,6 +4,7 @@ import io.github.oustery.opencodephone.core.model.OcJson
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -106,6 +107,20 @@ class OpenCodeConsoleClient(
         runCatching { json.parseToJsonElement(text) as? JsonObject }.getOrNull()
 
     /**
+     * The console advertises its verification page relative to its own
+     * origin (`/console/device?user_code=…`, upstream `account.ts` just
+     * resolves it against the console base URL). An unresolvable path fed
+     * to `ACTION_VIEW` has no scheme, no browser handles it and sign-in
+     * dies with "no browser" — so resolve absolute-or-relative here before
+     * the URL reaches the UI. Absolute URLs pass through untouched.
+     */
+    private fun resolveVerificationUrl(value: String): String {
+        if (value.isBlank()) return value
+        val base = baseUrl.toHttpUrlOrNull() ?: return value
+        return base.resolve(value)?.toString() ?: value
+    }
+
+    /**
      * Start the device flow: returns the user code to confirm and the
      * verification URL to open in a browser.
      */
@@ -117,9 +132,11 @@ class OpenCodeConsoleClient(
             ?: throw IllegalStateException("Console device-code response is not JSON")
         val deviceCode = payload.str("device_code")
             ?: throw IllegalStateException("Console response has no device_code")
-        val verification = payload.str("verification_uri_complete")
-            ?: payload.str("verification_uri")
-            ?: throw IllegalStateException("Console response has no verification URL")
+        val verification = resolveVerificationUrl(
+            payload.str("verification_uri_complete")
+                ?: payload.str("verification_uri")
+                ?: throw IllegalStateException("Console response has no verification URL"),
+        )
         val expiresInSec = payload.str("expires_in")?.toLongOrNull() ?: 600L
         val intervalSec = payload.str("interval")?.toLongOrNull() ?: 5L
         return ConsoleLogin(
