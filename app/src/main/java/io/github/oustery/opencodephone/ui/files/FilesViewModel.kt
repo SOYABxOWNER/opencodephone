@@ -173,6 +173,10 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
                 throw e
             } catch (e: Exception) {
                 drafts.clearEditor()
+                // The unsaved buffer is lost here — the user must know.
+                _state.update {
+                    it.copy(message = "Unsaved draft could not be reopened: ${e.message ?: e.javaClass.simpleName}")
+                }
             }
         }
     }
@@ -242,7 +246,7 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
                     refreshGit()
                 }
             } catch (e: CancellationException) { throw e }
-            catch (e: Exception) { _state.update { it.copy(message = "Refresh failed: ${e.javaClass.simpleName}") } }
+            catch (e: Exception) { _state.update { it.copy(message = "Refresh failed: ${e.message ?: e.javaClass.simpleName}") } }
         }
     }
 
@@ -312,13 +316,27 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
         check(graph.layout.isInstalled()) { "Environment is not ready" }
         return graph.runtime.exec(args, env = env, cwd = cwd(repo))
     }
+
+    /**
+     * Git diagnostics: stdout+stderr are merged by the runtime, and the last
+     * non-blank line is git's `fatal:`/`error:` explanation. A bare exit code
+     * ("Clone failed (exit 128)") tells the user nothing — the reason must
+     * reach the message bar (exception audit).
+     */
+    private fun gitFailure(action: String, result: ExecResult): IllegalStateException {
+        val detail = result.output.trim().lineSequence()
+            .lastOrNull { it.isNotBlank() }?.take(300).orEmpty()
+        return IllegalStateException(
+            "$action failed (exit ${result.exitCode})" + if (detail.isEmpty()) "" else ": $detail",
+        )
+    }
     private suspend fun migrate(repo: File) = GitAuth.migrateRemotes { exec(repo, it) }
     private suspend fun refreshGit() {
         val repo = project ?: return
         // -z keeps paths unquoted and NUL-separated, so spaces and exotic
         // characters survive the round-trip (F-008).
         val result = exec(repo, listOf("git", "status", "--porcelain", "-z", "-b"))
-        check(result.exitCode == 0) { "Git status failed" }
+        if (result.exitCode != 0) throw gitFailure("Git status", result)
         val entries = result.output.split('\u0000').filter { it.isNotBlank() }
         val branch = entries.firstOrNull()?.takeIf { it.startsWith("## ") }?.removePrefix("## ")
         val changes = entries
@@ -348,7 +366,7 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
                 val target = files.checked(File(workspace, name))
                 check(!target.exists()) { "Directory already exists" }
                 val result = exec(workspace, GitAuth.command("clone", "--", clean, name), GitAuth.environment(clean, graph.settings.gitConfig().githubToken))
-                check(result.exitCode == 0) { "Clone failed (exit ${result.exitCode})" }
+                if (result.exitCode != 0) throw gitFailure("Clone", result)
                 project = target
                 publishProject(target)
                 refreshGit()
@@ -365,10 +383,12 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
             // Stage only what the user picked instead of a blind `git add -A`
             // (functional audit F-008).
             require(selectedPaths.isNotEmpty()) { "Select at least one changed file" }
-            check(exec(repo, listOf("git", "add", "--") + selectedPaths.toList()).exitCode == 0) { "Git add failed" }
+            val added = exec(repo, listOf("git", "add", "--") + selectedPaths.toList())
+            if (added.exitCode != 0) throw gitFailure("Git add", added)
             val identity = graph.settings.gitConfig()
             val args = listOf("-c", "user.name=${identity.userName}", "-c", "user.email=${identity.userEmail}", "commit", "-m", message)
-            check(exec(repo, GitAuth.command(*args.toTypedArray())).exitCode == 0) { "Commit failed" }
+            val committed = exec(repo, GitAuth.command(*args.toTypedArray()))
+            if (committed.exitCode != 0) throw gitFailure("Commit", committed)
             refreshGit()
         } }
     }
@@ -439,7 +459,7 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
             check(remote.exitCode == 0) { "No push remote" }
             val clean = GitAuth.cleanUrl(remote.output.trim())
             val result = exec(repo, GitAuth.command("push", clean, "HEAD"), GitAuth.environment(clean, graph.settings.gitConfig().githubToken))
-            check(result.exitCode == 0) { "Push failed (exit ${result.exitCode})" }
+            if (result.exitCode != 0) throw gitFailure("Push", result)
             _state.update { it.copy(message = "Pushed") }
         } }
     }
@@ -465,7 +485,7 @@ class FilesViewModel(private val graph: AppGraph) : ViewModel() {
                     GitAuth.command("pull", "--ff-only", clean, branch),
                     GitAuth.environment(clean, graph.settings.gitConfig().githubToken),
                 )
-                check(result.exitCode == 0) { "Pull failed (exit ${result.exitCode})" }
+                if (result.exitCode != 0) throw gitFailure("Pull", result)
                 _state.update { it.copy(message = "Pulled from origin") }
             }
             refresh()

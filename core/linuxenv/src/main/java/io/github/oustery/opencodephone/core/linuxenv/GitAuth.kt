@@ -33,7 +33,11 @@ object GitAuth {
     suspend fun migrateRemotes(run: suspend (List<String>) -> ExecResult) {
         val result = run(listOf("git", "config", "--local", "--get-regexp", "^remote\\..*\\.(url|pushurl)$"))
         if (result.exitCode == 1) return
-        check(result.exitCode == 0) { "Cannot read repository remotes" }
+        check(result.exitCode == 0) {
+            "Cannot read repository remotes (exit ${result.exitCode})" +
+                result.output.trim().lineSequence().lastOrNull { it.isNotBlank() }
+                    ?.let { ": ${it.take(200)}" }.orEmpty()
+        }
         val entries = result.output.lineSequence().filter { it.isNotBlank() }.map { line ->
             val key = line.substringBefore(' ')
             val value = line.substringAfter(' ')
@@ -51,8 +55,14 @@ object GitAuth {
                 // Each command has the runtime's process timeout. Do not let view/project
                 // cancellation interrupt the remove/repopulate transaction and lose URLs.
                 withContext(NonCancellable) {
-                    check(run(listOf("git", "config", "--local", "--unset-all", key)).exitCode == 0)
-                    for (value in cleaned) check(run(listOf("git", "config", "--local", "--add", key, value)).exitCode == 0)
+                    check(run(listOf("git", "config", "--local", "--unset-all", key)).exitCode == 0) {
+                        "Cannot remove stale remote config $key"
+                    }
+                    for (value in cleaned) {
+                        check(run(listOf("git", "config", "--local", "--add", key, value)).exitCode == 0) {
+                            "Cannot store cleaned remote config $key"
+                        }
+                    }
                 }
             }
         }
