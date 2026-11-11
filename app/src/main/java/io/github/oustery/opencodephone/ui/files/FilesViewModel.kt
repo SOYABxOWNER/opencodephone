@@ -3,6 +3,7 @@ package io.github.oustery.opencodephone.ui.files
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.oustery.opencodephone.AppGraph
+import io.github.oustery.opencodephone.R
 import io.github.oustery.opencodephone.core.linuxenv.*
 import io.github.oustery.opencodephone.core.settings.DraftStore
 import kotlinx.coroutines.*
@@ -10,6 +11,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
+import java.util.concurrent.atomic.AtomicLong
 
  data class GitChange(val status: String, val path: String)
 
